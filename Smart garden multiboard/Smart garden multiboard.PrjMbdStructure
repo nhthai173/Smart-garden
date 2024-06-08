@@ -1,0 +1,4 @@
+Record=DiagramHierarchy|SourceDocument=Schematic.MbsDoc|Kind=Multi-board Schematic Module|Designator=2|Source=\\mac\Home\Desktop\electronics\smart-garden\Smart garden base\Smart garden base.PrjPcb
+Record=SubProject|SourceDocument=Schematic.MbsDoc|ProjectPath=\\mac\Home\Desktop\electronics\smart-garden\Smart garden base\Smart garden base.PrjPcb
+Record=DiagramHierarchy|SourceDocument=Schematic.MbsDoc|Kind=Multi-board Schematic Module|Designator=1|Source=\\mac\Home\Desktop\electronics\smart-garden\Smart garden controller\Smart garden controller.PrjPcb
+Record=SubProject|SourceDocument=Schematic.MbsDoc|ProjectPath=\\mac\Home\Desktop\electronics\smart-garden\Smart garden controller\Smart garden controller.PrjPcb
