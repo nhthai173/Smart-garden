@@ -2,9 +2,10 @@
 
 void AutoOff::on()
 {
+    if (_state) return;
+    _previousMillis = millis();
     _state = true;
     digitalWrite(_pin, _activeState);
-    _previousMillis = millis();
     if (_onPowerOn != nullptr)
     {
         _onPowerOn();
@@ -13,7 +14,9 @@ void AutoOff::on()
 
 void AutoOff::off()
 {
+    if (!_state) return;
     _state = false;
+    _previousMillis = MAXUL;
     digitalWrite(_pin, !_activeState);
     if (_onPowerOff != nullptr)
     {
@@ -21,12 +24,12 @@ void AutoOff::off()
     }
 }
 
-void AutoOff::setDuration(uint32_t duration)
+void AutoOff::setDuration(unsigned long duration)
 {
     _duration = duration;
 }
 
-uint32_t AutoOff::getDuration()
+unsigned long AutoOff::getDuration()
 {
     return _duration;
 }

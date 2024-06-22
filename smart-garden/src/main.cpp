@@ -16,8 +16,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.0.2"
-#define FIRMWARE_VERSION 2
+#define DEVICE_VERSION "0.0.3"
+#define FIRMWARE_VERSION 3
 
 //#define VALVE_POWER_PIN 19     // R1
 //#define VALVE_DIRECTION_PIN 18 // R2
@@ -29,10 +29,10 @@
 
 #define OUTPUT_ACTIVE_STATE LOW
 
-AutoOff ValvePower(19, 8000   /* 8 sec */, OUTPUT_ACTIVE_STATE); // R1
+AutoOff ValvePower(19, 10000L   /* 10 sec */, OUTPUT_ACTIVE_STATE); // R1
 IODevice ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
 IODevice PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
-AutoOff ACPower(4, 300000 /* 5 min */, OUTPUT_ACTIVE_STATE); // R4
+AutoOff ACPower(4, 180000L /* 3 min */, OUTPUT_ACTIVE_STATE); // R4
 VirtualDevice Valve;
 
 SimpleTimer timer;
@@ -113,11 +113,14 @@ void setup() {
         message += "\"device\":\"" DEVICE_NAME "\",";
         message += "\"version\":\"" DEVICE_VERSION "\",";
         message += "\"firmware\":" + String(FIRMWARE_VERSION) + ",";
+        message += "ip:\"" + WiFi.localIP().toString() + "\",";
         message += "\"valve\":" + Valve.getStateString() + ",";
         message += "\"r1\":" + ValvePower.getStateString() + ",";
         message += "\"r2\":" + ValveDirection.getStateString() + ",";
         message += "\"r3\":" + PumpPower.getStateString() + ",";
         message += "\"r4\":" + ACPower.getStateString() + ",";
+        message += "\"r1_auto_off\":" + String(ValvePower.getDuration()) + ",";
+        message += "\"r4_auto_off\":" + String(ACPower.getDuration()) + ",";
         message += "\"valve\":" + Valve.getStateString();
         message += "}";
         request->send(200, "application/json", message);
@@ -136,8 +139,8 @@ void loop() {
     ws.cleanupClients();
     ElegantOTA.loop();
     timer.run();
-    ValvePower.loop();
-    ACPower.loop();
+//    ValvePower.loop(); // @ERROR
+//    ACPower.loop(); // @ERROR
 }
 
 bool connectWiFi() {

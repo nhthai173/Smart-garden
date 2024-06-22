@@ -1,6 +1,8 @@
 #ifndef AUTO_OFF_H
 #define AUTO_OFF_H
 
+#define MAXUL 4294967295
+
 #include <Arduino.h>
 #include "IODevice.h"
 
@@ -15,9 +17,8 @@ public:
      * @param duration duration to turn off after power is on in milliseconds
      * @param activeState LOW or HIGH. Default is LOW
      */
-    AutoOff(uint8_t pin, uint32_t duration, bool activeState = 0) : IODevice(pin, activeState) {
+    AutoOff(uint8_t pin, unsigned long duration, bool activeState = LOW) : IODevice(pin, activeState) {
         _duration = duration;
-        _previousMillis = 0;
     }
     
     /**
@@ -37,14 +38,14 @@ public:
      * 
      * @param duration 
      */
-    void setDuration(uint32_t duration);
+    void setDuration(unsigned long duration);
     
     /**
      * @brief Get the Duration object
      * 
-     * @return uint32_t 
+     * @return unsigned long
      */
-    uint32_t getDuration();
+    unsigned long getDuration();
     
     /**
      * @brief function to be called in loop
@@ -66,8 +67,8 @@ public:
      */
     void onPowerOff(std::function<void()> _onPowerOff);
 protected:
-    uint32_t _duration;
-    uint32_t _previousMillis;
+    unsigned long _duration;
+    unsigned long _previousMillis = MAXUL;
     std::function<void()> _onPowerOn = nullptr;
     std::function<void()> _onPowerOff = nullptr;
 };

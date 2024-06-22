@@ -15,7 +15,7 @@ public:
      * @param pin pin number
      * @param activeState LOW or HIGH. Default is LOW
      */
-    IODevice(uint8_t pin, bool activeState = 0);
+    IODevice(uint8_t pin, bool activeState = LOW);
 
     /**
      * @brief Set powe to ON
