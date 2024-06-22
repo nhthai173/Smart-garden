@@ -79,11 +79,22 @@
             <div class="main-content col">
 
                 <div class="card">
-                    <div class="card-body">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" role="switch" id="VALVE" checked-label="OPEN" uncheck-label="CLOSE">
-                            <label class="form-check-label" for="flexSwitchCheckDefault">VALVE</label>
+                    <div class="card-body text-muted fs-5 py-4">
+                        <label for="valve-slider" class="form-label">Trạng thái: <span class="state-text">Đóng</span></label>
+                        <div class="d-flex position-relative">
+                            <span>Đóng</span>
+                            <input type="range" class="form-range mt-1 ms-3 me-3" min="0" max="10" step="1" value="0" id="valve-slider" style="z-index: 1;">
+                            <span>Mở</span>
+                            <div class="progress" role="progressbar" style="position: absolute; top: 1em; left: 5.3em; right: 3.5em; height: 0.65em; z-index: 0;">
+                                <div class="progress-bar" style="width: 0%"></div>
+                            </div>
                         </div>
+                        <div class="collapse mt-4" id="valve-collapse">
+                            <div class="d-flex">
+                                <button class="btn btn-light w-100 me-4">Dừng</button>
+                                <button class="btn btn-light w-100">Đóng</button>
+                            </div>
+                          </div>
                     </div>
                 </div>
 
@@ -175,13 +186,79 @@
             }
         }
 
+        const Slider = new class {
+            constructor() {
+                this.slider = document.getElementById('valve-slider')
+                this.progress = this.slider.parentElement.querySelector('.progress-bar')
+                this.collapse = new bootstrap.Collapse('#valve-collapse', { toggle: false })
+                this.text = this.slider.closest('.card').querySelector('.state-text')
+                this.changeTimer = null
+                this.progressTimer = null
+                this.slider.setAttribute('last-value', this.slider.value)
+                this.slider.addEventListener('change', (e) => this.setValue(e.target.value, 8000))
+            }
+            update(v) {
+                this.slider.value = v
+                this.progress.style.width = `${v * 10}%`
+            }
+            setValue(v, timeout = 0, timeoutCB = null) {
+                let lVal = Number(this.slider.getAttribute('last-value'))
+                const changeAmount = Number(v) - lVal
+                let stateText = ''
+                let step = 1
+                if (!changeAmount) return
+                
+                clearTimeout(this.changeTimer)
+                clearInterval(this.progressTimer)
+                if (changeAmount < 0) {
+                    stateText = 'Đang đóng'
+                    step = -1
+                } else {
+                    stateText = 'Đang mở'
+                }
+                this.progress.innerHTML = stateText + '...'
+                this.text.innerHTML = stateText + ' đến ' + v * 10 + '%'
+                this.slider.disabled = true
+                this.collapse.show()
+                lVal += step
+                this.update(lVal)
+                this.progressTimer = setInterval(() => {
+                    lVal += step
+                    this.update(lVal)
+                    if (lVal == v)
+                        clearInterval(this.progressTimer)
+                }, 800)
+                if (timeout) {
+                    this.changeTimer = setTimeout(() => {
+                        this.slider.value = this.slider.getAttribute('last-value')
+                        this.done()
+                        LOADING.setText('Lỗi: không thể đóng/mở van', 2000)
+                        if (timeoutCB) timeoutCB()
+                    }, timeout)
+                }
+            }
+            done() {
+                const v = this.slider.value
+                clearTimeout(this.changeTimer)
+                clearInterval(this.progressTimer)
+                this.collapse.hide()
+                this.progress.innerHTML = ''
+                this.slider.disabled = false
+                this.slider.setAttribute('last-value', v)
+                this.update(v)
+                if (v == 0) {
+                    this.text.innerHTML = 'Đóng'
+                } else {
+                    this.text.innerHTML = 'Mở ' + v * 10 + '%'
+                }
+            }
+        }
+
         function setSwitchState(id, state) {
-            const el = document.getElementById(id)
-            if (!el) return
-            ['ON', 'OPEN'].some(s => s == state) ? el.checked = true : el.checked = false
+            document.getElementById(id).checked = state == 'ON'
         }
     </script>
-    <script>
+    <!-- <script>
         var ws = new WebSocket(`ws://${location.host}/ws`);
 
         ws.onmessage = (e) => {
@@ -191,9 +268,11 @@
             if (!message) return
             message.split('\n')
                 .forEach(m => {
-                    if (!m.includes(':')) return
-                    const [id, state] = m.split(':')
-                    setSwitchState(id, state)
+                    const match = m.match(/R\d{1}:(ON|OFF)/g)
+                    if (match) {
+                        const [id, state] = match[0].split(':')
+                        setSwitchState(id, state)
+                    }
                 });
         }
 
@@ -204,16 +283,10 @@
                     LOADING.setText('Lỗi: điều khiển thất bại', 2000)
                     e.target.checked = !e.target.checked
                 })
-                let state = ''
-                if (e.target.checked) {
-                    state = e.target.getAttribute('checked-label') || 'ON'
-                } else {
-                    state = e.target.getAttribute('uncheck-label') || 'OFF'
-                }
-                ws.send(`${e.target.id}:${state}`)
+                ws.send(`${e.target.id}:${e.target.checked ? 'ON' : 'OFF'}`)
             })
         })
-    </script>
+    </script> -->
 </body>
 
 </html>
