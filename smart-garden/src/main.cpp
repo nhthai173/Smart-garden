@@ -17,8 +17,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.0.6"
-#define FIRMWARE_VERSION 6
+#define DEVICE_VERSION "0.0.7"
+#define FIRMWARE_VERSION 7
 
 #define WATER_LEAK_PIN 34
 #define FLOW_SENSOR_PIN 35
@@ -31,7 +31,7 @@ GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
 GenericOutput PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
 AutoOff ACPower(4, 180000L /* 3 min */, OUTPUT_ACTIVE_STATE); // R4
 VirtualOutput Valve;
-GenericInput WaterLeak(34, INPUT, LOW, true);
+GenericInput WaterLeak(34, INPUT, LOW);
 
 SimpleTimer timer;
 
@@ -68,7 +68,6 @@ void notifyState();
 void WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data,
                size_t len);
 
-
 void mainLoop() {
     ValvePower.loop();
     ACPower.loop();
@@ -83,13 +82,6 @@ void setup() {
     if (!connectWiFi()) {
         Serial.println("Failed to connect to WiFi");
     }
-
-    WaterLeak.setActiveStateString("LEAK");
-    WaterLeak.setInactiveStateString("NONE");
-    WaterLeak.onActive([]() {
-        Valve.close();
-    });
-    WaterLeak.onChange(notifyState);
 
     ACPower.onPowerOn([]() {
         delay(1000); // wait for power to stabilize
@@ -112,6 +104,9 @@ void setup() {
         ValveDirection.off();
         ACPower.on();
         ValvePower.on();
+        timer.setTimeout(8000L, []() {
+            PumpPower.on();
+        });
     });
     Valve.setOffFunction([]() {
         ValveDirection.on();
@@ -123,6 +118,13 @@ void setup() {
 
     ValveDirection.onPowerChanged(notifyState);
     PumpPower.onPowerChanged(notifyState);
+
+    WaterLeak.setActiveStateString("LEAK");
+    WaterLeak.setInactiveStateString("NONE");
+    WaterLeak.onChange(notifyState);
+    WaterLeak.onActive([]() {
+        Valve.close();
+    });
 
     server.onNotFound([](AsyncWebServerRequest *request) { request->send(404, "text/plain", "Not found"); });
 
@@ -158,6 +160,7 @@ void setup() {
 }
 
 void loop() {
+    WaterLeak.loop();
     ws.cleanupClients();
     ElegantOTA.loop();
     timer.run();
