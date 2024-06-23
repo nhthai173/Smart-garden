@@ -5,14 +5,32 @@
 #ifndef VIRTUALOUTPUT_H
 #define VIRTUALOUTPUT_H
 
-#include "GenericOutput.h"
+#include "AutoOff.h"
 
-class VirtualOutput : public GenericOutput {
+class VirtualOutput : public AutoOff {
 public:
-    VirtualOutput() : GenericOutput() { }
-    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction) : GenericOutput() {
+    VirtualOutput() : AutoOff() { }
+
+    /**
+     * @brief Construct a new Virtual Output object
+     * @param onFunction function to execute when power is on
+     * @param offFunction function to execute when power is off
+     * @param autoOffEnabled enable auto off feature
+     */
+    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction, bool autoOffEnabled = false) : AutoOff() {
         _onFunction = std::move(onFunction);
         _offFunction = std::move(offFunction);
+        _autoOffEnabled = autoOffEnabled;
+    }
+
+    /**
+     * @brief Construct a new Virtual Output object with auto off feature and duration
+     * @param autoOffEnabled enable auto off feature
+     * @param duration duration to turn off after power is on in milliseconds
+     */
+    VirtualOutput(bool autoOffEnabled, unsigned long duration) : AutoOff() {
+        _autoOffEnabled = autoOffEnabled;
+        _duration = duration;
     }
 
     /**

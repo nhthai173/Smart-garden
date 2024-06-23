@@ -6,6 +6,7 @@
 
 void VirtualOutput::on() {
     _state = true;
+    _previousMillis = millis();
     if (_onFunction != nullptr) {
         _onFunction();
     }
