@@ -10,46 +10,54 @@
 class GenericInput {
 
 public:
-    GenericInput() {};
+    GenericInput() = default;
 
     /**
      * @brief Construct a new GenericInput object
      * @param pin pin number
      * @param mode pin mode. Default is INPUT
      * @param activeState active state. Default is LOW
-     * @param useInterrupt use interrupt or not. Default is true
      */
-    GenericInput(uint8_t pin, uint8_t mode = INPUT, bool activeState = LOW, bool useInterrupt = true);
+    explicit GenericInput(uint8_t pin, uint8_t mode = INPUT, bool activeState = LOW, uint32_t debounceTime = 50);
 
     /**
-     * @brief The interrupt handler. Do not call or override this function
-     * @param arg the instance of the object
+     * @brief Set the pin number
+     * @param pin
      */
-    static void _IRQHandler(void *arg);
+    void setPin(uint8_t pin) {
+        _pin = pin;
+    }
 
     /**
-     * @brief Use interrupt or not
-     * @param useInterrupt
+     * @brief Get the pin number
+     * @return uint8_t
      */
-    void useInterrupt(bool useInterrupt) {
-        _useInterrupt = useInterrupt;
-        if (useInterrupt) {
-            _attch();
-        } else {
-            _detach();
-        }
+    uint8_t getPin() const {
+        return _pin;
     }
 
     /**
      * @brief Set the pin mode
      * @param mode
      */
-    void setMode(uint8_t mode) {
-        _detach();
+    void setMode(uint8_t mode) const {
         pinMode(_pin, mode);
-        if (_useInterrupt) {
-            _attch();
-        }
+    }
+
+    /**
+     * @brief Set the debounce time
+     * @param debounceTime
+     */
+    void setDebounceTime(uint32_t debounceTime) {
+        _debounceTime = debounceTime;
+    }
+
+    /**
+     * @brief Get the debounce time
+     * @return uint32_t
+     */
+    uint32_t getDebounceTime() const {
+        return _debounceTime;
     }
 
     /**
@@ -122,23 +130,20 @@ public:
         _onInactiveCB = std::move(cb);
     }
 
+    void loop();
+
 protected:
     uint8_t _pin;
     bool _lastState;
     bool _activeState;
-    bool _useInterrupt = false;
+    bool _lastReadState; // for debounce
+    uint32_t _debounceTime;
+    unsigned long _lastDebounceTime = 0;
     String _activeStateStr = "ACTIVE";
     String _inactiveStateStr = "NONE";
     std::function<void()> _onChangeCB = nullptr;
     std::function<void()> _onActiveCB = nullptr;
     std::function<void()> _onInactiveCB = nullptr;
-
-    void _attch() {
-        attachInterruptArg(digitalPinToInterrupt(_pin), _IRQHandler, (void *) this, CHANGE);
-    }
-    void _detach() {
-        detachInterrupt(digitalPinToInterrupt(_pin));
-    }
 };
 
 
