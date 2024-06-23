@@ -7,7 +7,7 @@ class GenericOutput {
 
 public:
 
-    GenericOutput() { };
+    GenericOutput() = default;
 
     /**
      * @brief Construct a new GenericOutput object
@@ -15,7 +15,7 @@ public:
      * @param pin pin number
      * @param activeState LOW or HIGH. Default is LOW
      */
-    GenericOutput(uint8_t pin, bool activeState = LOW);
+    explicit GenericOutput(uint8_t pin, bool activeState = LOW);
 
     /**
      * @brief Set powe to ON
