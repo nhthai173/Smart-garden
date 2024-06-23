@@ -6,6 +6,8 @@
 #include <ESPAsyncWebServer.h>
 #include <ElegantOTA.h>
 #include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include <NTPClient.h>
 
 #include "GenericOutput.h"
 #include "GenericInput.h"
@@ -17,8 +19,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.0.8"
-#define FIRMWARE_VERSION 8
+#define DEVICE_VERSION "0.0.9"
+#define FIRMWARE_VERSION 9
 
 #define WATER_LEAK_PIN 34
 #define FLOW_SENSOR_PIN 35
@@ -35,8 +37,12 @@ GenericInput WaterLeak(34, INPUT, LOW);
 
 SimpleTimer timer;
 
+WiFiUDP ntpUDP;
+NTPClient timeClient = NTPClient(ntpUDP, "pool.ntp.org", 7 * 3600);
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
+
+bool scheduleLoopExecuted = false;
 
 
 /**
@@ -72,6 +78,17 @@ void mainLoop() {
     ValvePower.loop();
     ACPower.loop();
     Valve.loop();
+    timeClient.update();
+
+    // @TODO add Scheduler class to handle this
+    if (timeClient.getHours() == 7 && timeClient.getMinutes() == 0) {
+        if (!scheduleLoopExecuted) {
+            scheduleLoopExecuted = true;
+            Valve.open();
+        }
+    } else if (scheduleLoopExecuted) {
+        scheduleLoopExecuted = false;
+    }
 }
 
 
@@ -144,9 +161,26 @@ void setup() {
         message += "\"r4\":" + ACPower.getStateString() + ",";
         message += "\"r1_auto_off\":" + String(ValvePower.getDuration()) + ",";
         message += "\"r4_auto_off\":" + String(ACPower.getDuration()) + ",";
-        message += "\"valve\":" + Valve.getStateString();
+        message += "\"valve\":" + Valve.getStateString() + ",";
+        message += "\"valve_auto_off\":" + String(Valve.getDuration()) + ",";
+        message += "\"water_leak\":" + WaterLeak.getStateString();
         message += "}";
         request->send(200, "application/json", message);
+    });
+
+    server.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/plain", "Restarting...");
+        delay(1000);
+        ESP.restart();
+    });
+
+    server.on("/watering", HTTP_ANY, [](AsyncWebServerRequest *request) {
+        if (request->hasParam("stop")) {
+            Valve.close();
+        } else {
+            Valve.open();
+        }
+        request->send(200, "text/plain", "OK");
     });
 
     MDNS.begin(MDNS_NAME);
@@ -156,6 +190,8 @@ void setup() {
     ElegantOTA.begin(&server);
     server.addHandler(&ws);
     server.begin();
+
+    timeClient.begin();
 
     timer.setInterval(1000L, mainLoop);
 }
