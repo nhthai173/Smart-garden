@@ -25,7 +25,7 @@ unsigned long AutoOff::getDuration() const
 
 void AutoOff::loop()
 {
-    if (_state)
+    if (_autoOffEnabled && _state)
     {
         if (millis() >= _previousMillis + _duration)
         {

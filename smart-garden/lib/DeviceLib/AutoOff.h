@@ -8,6 +8,8 @@ class AutoOff : public GenericOutput
 {
 public:
 
+    AutoOff() = default;
+
     /**
      * @brief Construct a new Auto Off object
      * 
@@ -15,8 +17,9 @@ public:
      * @param duration duration to turn off after power is on in milliseconds
      * @param activeState LOW or HIGH. Default is LOW
      */
-    AutoOff(uint8_t pin, unsigned long duration, bool activeState = LOW) : GenericOutput(pin, activeState) {
+    AutoOff(uint8_t pin, unsigned long duration, bool activeState = LOW, bool autoOffEnabled = true) : GenericOutput(pin, activeState) {
         _duration = duration;
+        _autoOffEnabled = autoOffEnabled;
     }
     
     /**
@@ -30,6 +33,25 @@ public:
      * 
      */
     void off() override;
+
+    /**
+     * @brief enable or disable auto off
+     * @param autoOffEnabled true to enable, false to disable
+     */
+    void setAutoOff(bool autoOffEnabled) {
+        _autoOffEnabled = autoOffEnabled;
+    }
+
+    /**
+     * @brief enable or disable auto off and set the duration
+     *
+     * @param autoOffEnabled
+     * @param duration
+     */
+    void setAutoOff(bool autoOffEnabled, unsigned long duration) {
+        _autoOffEnabled = autoOffEnabled;
+        _duration = duration;
+    }
 
     /**
      * @brief Set the duration to turn off after the power is on
@@ -61,6 +83,7 @@ public:
     void loop();
 
 protected:
+    bool _autoOffEnabled = false;
     unsigned long _duration;
     unsigned long _previousMillis = 0;
     std::function<void()> _onAutoOff = nullptr;
