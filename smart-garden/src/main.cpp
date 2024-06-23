@@ -17,8 +17,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.0.7"
-#define FIRMWARE_VERSION 7
+#define DEVICE_VERSION "0.0.8"
+#define FIRMWARE_VERSION 8
 
 #define WATER_LEAK_PIN 34
 #define FLOW_SENSOR_PIN 35
@@ -30,7 +30,7 @@ AutoOff ValvePower(19, 8000L   /* 8 sec */, OUTPUT_ACTIVE_STATE); // R1
 GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
 GenericOutput PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
 AutoOff ACPower(4, 180000L /* 3 min */, OUTPUT_ACTIVE_STATE); // R4
-VirtualOutput Valve;
+VirtualOutput Valve(true, 60000L /* 1 min */);
 GenericInput WaterLeak(34, INPUT, LOW);
 
 SimpleTimer timer;
@@ -71,6 +71,7 @@ void WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType ty
 void mainLoop() {
     ValvePower.loop();
     ACPower.loop();
+    Valve.loop();
 }
 
 
