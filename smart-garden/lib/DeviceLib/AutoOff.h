@@ -1,8 +1,6 @@
 #ifndef AUTO_OFF_H
 #define AUTO_OFF_H
 
-#define MAXUL 4294967295
-
 #include <Arduino.h>
 #include "IODevice.h"
 
@@ -25,13 +23,13 @@ public:
      * @brief set power on
      * 
      */
-    void on();
+    void on() override;
 
     /**
      * @brief set power off immediately
      * 
      */
-    void off();
+    void off() override;
 
     /**
      * @brief Set the duration to turn off after the power is on
@@ -55,7 +53,7 @@ public:
 
 protected:
     unsigned long _duration;
-    unsigned long _previousMillis = MAXUL;
+    unsigned long _previousMillis = 0;
 };
 
 #endif // AUTO_OFF_H

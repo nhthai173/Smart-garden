@@ -21,13 +21,13 @@ public:
      * @brief Set powe to ON
      * 
      */
-    void on();
+    virtual void on();
 
     /**
      * @brief Set power to OFF
      * 
      */
-    void off();
+    virtual void off();
 
     /**
      * @brief Toggle power

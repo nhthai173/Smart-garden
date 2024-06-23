@@ -21,13 +21,13 @@ public:
      * @brief Set power to ON
      *
      */
-    void on();
+    void on() override;
 
     /**
      * @brief Set power to OFF
      *
      */
-    void off();
+    void off() override;
 
     /**
      * @brief alternate name for on()

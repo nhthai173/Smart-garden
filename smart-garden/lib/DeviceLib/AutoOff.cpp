@@ -10,7 +10,6 @@ void AutoOff::on()
 void AutoOff::off()
 {
     if (!_state) return;
-    _previousMillis = MAXUL;
     IODevice::off();
 }
 
