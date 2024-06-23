@@ -30,6 +30,10 @@ void AutoOff::loop()
         if (millis() >= _previousMillis + _duration)
         {
             off();
+            if (_onAutoOff != nullptr)
+            {
+                _onAutoOff();
+            }
         }
     }
 }

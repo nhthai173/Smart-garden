@@ -44,6 +44,15 @@ public:
      * @return unsigned long
      */
     unsigned long getDuration() const;
+
+    /**
+     * @brief Set the callback function to be called when power is turned off automatically
+     *
+     * @param onAutoOff callback function
+     */
+    void onAutoOff(std::function<void()> onAutoOff) {
+        _onAutoOff = std::move(onAutoOff);
+    }
     
     /**
      * @brief function to be called in loop
@@ -54,6 +63,7 @@ public:
 protected:
     unsigned long _duration;
     unsigned long _previousMillis = 0;
+    std::function<void()> _onAutoOff = nullptr;
 };
 
 #endif // AUTO_OFF_H
