@@ -16,20 +16,16 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.0.3"
-#define FIRMWARE_VERSION 3
+#define DEVICE_VERSION "0.0.4"
+#define FIRMWARE_VERSION 4
 
-//#define VALVE_POWER_PIN 19     // R1
-//#define VALVE_DIRECTION_PIN 18 // R2
-//#define PUMP_POWER_PIN 16      // R3
-//#define AC_POWER_PIN 4         // R4
 #define WATER_LEAK_PIN 34
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
 
 #define OUTPUT_ACTIVE_STATE LOW
 
-AutoOff ValvePower(19, 10000L   /* 10 sec */, OUTPUT_ACTIVE_STATE); // R1
+AutoOff ValvePower(19, 8000L   /* 8 sec */, OUTPUT_ACTIVE_STATE); // R1
 IODevice ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
 IODevice PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
 AutoOff ACPower(4, 180000L /* 3 min */, OUTPUT_ACTIVE_STATE); // R4
@@ -55,7 +51,7 @@ bool connectWiFi();
  * 
  * @param server 
  */
-void notifyState(AsyncWebSocket *server);
+void notifyState();
 
 /**
  * @brief WebSocket event handler
@@ -71,6 +67,12 @@ void WSHandler(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
                size_t len);
 
 
+void mainLoop() {
+    ValvePower.loop();
+    ACPower.loop();
+}
+
+
 void setup() {
     Serial.begin(115200);
     while (!Serial && millis() < 2000)
@@ -80,9 +82,6 @@ void setup() {
         Serial.println("Failed to connect to WiFi");
     }
 
-    Valve.setOnStateString("OPEN");
-    Valve.setOffStateString("CLOSE");
-
     ACPower.onPowerOn([]() {
         delay(1000); // wait for power to stabilize
     });
@@ -90,21 +89,30 @@ void setup() {
         ValvePower.off();
         PumpPower.off();
     });
+    ACPower.onPowerChanged(notifyState);
+
     ValvePower.onPowerOff([]() {
         ValveDirection.off();
     });
+    ValvePower.onPowerChanged(notifyState);
+
+    Valve.setOnStateString("OPEN");
+    Valve.setOffStateString("CLOSE");
 
     Valve.setOnFunction([]() {
         ValveDirection.off();
         ACPower.on();
         ValvePower.on();
     });
-
     Valve.setOffFunction([]() {
         ValveDirection.on();
         ACPower.on();
         ValvePower.on();
     });
+    Valve.onPowerChanged(notifyState);
+
+    ValveDirection.onPowerChanged(notifyState);
+    PumpPower.onPowerChanged(notifyState);
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) { request->send(200, "text/html", MAINPAGE); });
 
@@ -133,14 +141,14 @@ void setup() {
     ElegantOTA.begin(&server);
     server.addHandler(&ws);
     server.begin();
+
+    timer.setInterval(1000L, mainLoop);
 }
 
 void loop() {
     ws.cleanupClients();
     ElegantOTA.loop();
     timer.run();
-//    ValvePower.loop(); // @ERROR
-//    ACPower.loop(); // @ERROR
 }
 
 bool connectWiFi() {
@@ -161,13 +169,14 @@ bool connectWiFi() {
     return true;
 }
 
-void notifyState(AsyncWebSocket *server) {
+void notifyState() {
+    if (ws.getClients().isEmpty()) return;
     String message = "R1:" + ValvePower.getStateString() + "\n";
     message += "R2:" + ValveDirection.getStateString() + "\n";
     message += "R3:" + PumpPower.getStateString() + "\n";
     message += "R4:" + ACPower.getStateString() + "\n";
     message += "VALVE:" + Valve.getStateString();
-    server->textAll(message);
+    ws.textAll(message);
 }
 
 void WSHandler(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data,
@@ -177,7 +186,7 @@ void WSHandler(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
     switch (type) {
         case WS_EVT_CONNECT:
             Serial.printf("WS client [%d] connected\n", client->id());
-            notifyState(server);
+            notifyState();
             break;
         case WS_EVT_DISCONNECT:
             Serial.printf("WS client [%d] disconnected\n", client->id());
@@ -199,7 +208,6 @@ void WSHandler(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
                     Valve.close();
                 }
             }
-            notifyState(server);
             break;
         case WS_EVT_PONG:
             break;
