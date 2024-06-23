@@ -9,13 +9,27 @@ IODevice::IODevice(uint8_t pin, bool activeState) {
 }
 
 void IODevice::on() {
-    digitalWrite(_pin, _activeState);
+    if (_state) return;
     _state = true;
+    digitalWrite(_pin, _activeState);
+    if (_onPowerOn != nullptr) {
+        _onPowerOn();
+    }
+    if (_onPowerChanged != nullptr) {
+        _onPowerChanged();
+    }
 }
 
 void IODevice::off() {
-    digitalWrite(_pin, !_activeState);
+    if (!_state) return;
     _state = false;
+    digitalWrite(_pin, !_activeState);
+    if (_onPowerOff != nullptr) {
+        _onPowerOff();
+    }
+    if (_onPowerChanged != nullptr) {
+        _onPowerChanged();
+    }
 }
 
 void IODevice::toggle() {
@@ -26,7 +40,7 @@ void IODevice::toggle() {
     }
 }
 
-void IODevice::setState(String state) {
+void IODevice::setState(const String& state) {
     if (state.startsWith("ON")) {
         on();
     } else {
@@ -38,14 +52,14 @@ void IODevice::setActiveState(bool activeState) {
     _activeState = activeState;
 }
 
-bool IODevice::getActiveState() {
+bool IODevice::getActiveState() const {
     return _activeState;
 }
 
-bool IODevice::getState() {
+bool IODevice::getState() const {
     return _state;
 }
 
-String IODevice::getStateString() {
+String IODevice::getStateString() const {
     return _state ? "ON" : "OFF";
 }

@@ -5,14 +5,16 @@
 #ifndef SMART_GARDEN_VIRTUALDEVICE_H
 #define SMART_GARDEN_VIRTUALDEVICE_H
 
+#include <utility>
+
 #include "IODevice.h"
 
 class VirtualDevice : public IODevice {
 public:
     VirtualDevice() : IODevice() { }
     VirtualDevice(std::function<void()> onFunction, std::function<void()> offFunction) : IODevice() {
-        _onFunction = onFunction;
-        _offFunction = offFunction;
+        _onFunction = std::move(onFunction);
+        _offFunction = std::move(offFunction);
     }
 
     /**
@@ -56,7 +58,7 @@ public:
      * @param onStateString
      */
     void setOnStateString(String onStateString) {
-        _onStateString = onStateString;
+        _onStateString = std::move(onStateString);
     }
 
     /**
@@ -64,15 +66,15 @@ public:
      * @param offStateString
      */
     void setOffStateString(String offStateString) {
-        _offStateString = offStateString;
+        _offStateString = std::move(offStateString);
     }
 
     void setOnFunction(std::function<void()> onFunction) {
-        _onFunction = onFunction;
+        _onFunction = std::move(onFunction);
     }
 
     void setOffFunction(std::function<void()> offFunction) {
-        _offFunction = offFunction;
+        _offFunction = std::move(offFunction);
     }
 
 protected:

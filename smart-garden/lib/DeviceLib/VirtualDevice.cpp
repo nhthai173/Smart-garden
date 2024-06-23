@@ -5,15 +5,27 @@
 #include "VirtualDevice.h"
 
 void VirtualDevice::on() {
+    _state = true;
     if (_onFunction != nullptr) {
         _onFunction();
     }
-    _state = true;
+    if (_onPowerOn != nullptr) {
+        _onPowerOn();
+    }
+    if (_onPowerChanged != nullptr) {
+        _onPowerChanged();
+    }
 }
 
 void VirtualDevice::off() {
+    _state = false;
     if (_offFunction != nullptr) {
         _offFunction();
     }
-    _state = false;
+    if (_onPowerOff != nullptr) {
+        _onPowerOff();
+    }
+    if (_onPowerChanged != nullptr) {
+        _onPowerChanged();
+    }
 }

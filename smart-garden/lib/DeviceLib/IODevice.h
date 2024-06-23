@@ -40,7 +40,7 @@ public:
      * 
      * @param state 
      */
-    void setState(String state);
+    void setState(const String& state);
 
     /**
      * @brief Set the Active State object
@@ -55,7 +55,7 @@ public:
      * @return true 
      * @return false 
      */
-    bool getActiveState();
+    bool getActiveState() const;
 
     /**
      * @brief Get current state of the device
@@ -63,7 +63,7 @@ public:
      * @return true when ON
      * @return false when OFF
      */
-    bool getState();
+    bool getState() const;
 
     /**
      * @brief Get current state of the device as string "ON" or "OFF"
@@ -71,12 +71,42 @@ public:
      * @return String
      
      */
-    String getStateString();
+    String getStateString() const;
+
+    /**
+     * @brief Set callback function to be called when power is on
+     *
+     * @param onPowerOn
+     */
+    void onPowerOn(std::function<void()> onPowerOn) {
+        _onPowerOn = std::move(onPowerOn);
+    }
+
+    /**
+     * @brief Set callback function to be called when power is off
+     *
+     * @param onPowerOff
+     */
+    void onPowerOff(std::function<void()> onPowerOff) {
+        _onPowerOff = std::move(onPowerOff);
+    }
+
+    /**
+     * @brief Set callback function to be called when power is changed
+     *
+     * @param onPowerChanged
+     */
+    void onPowerChanged(std::function<void()> onPowerChanged) {
+        _onPowerChanged = std::move(onPowerChanged);
+    }
 
 protected:
     uint8_t _pin;
     bool _activeState;
     bool _state;
+    std::function<void()> _onPowerOn = nullptr;
+    std::function<void()> _onPowerOff = nullptr;
+    std::function<void()> _onPowerChanged = nullptr;
 
 };
 

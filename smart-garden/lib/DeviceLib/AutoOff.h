@@ -45,7 +45,7 @@ public:
      * 
      * @return unsigned long
      */
-    unsigned long getDuration();
+    unsigned long getDuration() const;
     
     /**
      * @brief function to be called in loop
@@ -53,24 +53,9 @@ public:
      */
     void loop();
 
-    /**
-     * @brief Set callback function to be called when power is on
-     * 
-     * @param onPowerOn 
-     */
-    void onPowerOn(std::function<void()> onPowerOn);
-
-    /**
-     * @brief Set callback function to be called when power is off
-     * 
-     * @param onPowerOff 
-     */
-    void onPowerOff(std::function<void()> _onPowerOff);
 protected:
     unsigned long _duration;
     unsigned long _previousMillis = MAXUL;
-    std::function<void()> _onPowerOn = nullptr;
-    std::function<void()> _onPowerOff = nullptr;
 };
 
 #endif // AUTO_OFF_H
