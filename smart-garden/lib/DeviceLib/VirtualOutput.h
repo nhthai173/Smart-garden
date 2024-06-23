@@ -55,16 +55,16 @@ public:
      * @brief Set the label for ON state
      * @param onStateString
      */
-    void setOnStateString(String onStateString) {
-        _onStateString = std::move(onStateString);
+    void setOnStateString(const String& onStateString) {
+        _onStateString = onStateString;
     }
 
     /**
      * @brief Set the label for OFF state
      * @param offStateString
      */
-    void setOffStateString(String offStateString) {
-        _offStateString = std::move(offStateString);
+    void setOffStateString(const String& offStateString) {
+        _offStateString = offStateString;
     }
 
     void setOnFunction(std::function<void()> onFunction) {
