@@ -17,8 +17,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.0.5"
-#define FIRMWARE_VERSION 5
+#define DEVICE_VERSION "0.0.6"
+#define FIRMWARE_VERSION 6
 
 #define WATER_LEAK_PIN 34
 #define FLOW_SENSOR_PIN 35
@@ -31,7 +31,7 @@ GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
 GenericOutput PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
 AutoOff ACPower(4, 180000L /* 3 min */, OUTPUT_ACTIVE_STATE); // R4
 VirtualOutput Valve;
-GenericInput WaterLeak(34, INPUT, HIGH, true);
+GenericInput WaterLeak(34, INPUT, LOW, true);
 
 SimpleTimer timer;
 
