@@ -90,6 +90,17 @@
                 <div class="card">
                     <div class="card-body">
                         <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" id="WATER_LEAK" disabled>
+                            <label class="form-check-label" for="flexSwitchCheckDefault">WATER LEAK</label>
+                        </div>
+                    </div>
+                </div>
+
+
+                <hr class="my-5">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" role="switch" id="R1">
                             <label class="form-check-label" for="flexSwitchCheckDefault">R1</label>
                         </div>
@@ -178,7 +189,7 @@
         function setSwitchState(id, state) {
             const el = document.getElementById(id)
             if (!el) return
-            ['ON', 'OPEN'].some(s => s == state) ? el.checked = true : el.checked = false
+            ['ON', 'OPEN', 'LEAK'].some(s => s == state) ? el.checked = true : el.checked = false
         }
     </script>
     <script>

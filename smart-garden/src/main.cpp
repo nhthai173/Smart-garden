@@ -7,17 +7,18 @@
 #include <ElegantOTA.h>
 #include <ESPmDNS.h>
 
-#include "IODevice.h"
+#include "GenericOutput.h"
+#include "GenericInput.h"
+#include "VirtualOutput.h"
 #include "AutoOff.h"
-#include "VirtualDevice.h"
 
 #include "MAIN_PAGE.h"
 #include "secret.h"
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.0.4"
-#define FIRMWARE_VERSION 4
+#define DEVICE_VERSION "0.0.5"
+#define FIRMWARE_VERSION 5
 
 #define WATER_LEAK_PIN 34
 #define FLOW_SENSOR_PIN 35
@@ -26,10 +27,11 @@
 #define OUTPUT_ACTIVE_STATE LOW
 
 AutoOff ValvePower(19, 8000L   /* 8 sec */, OUTPUT_ACTIVE_STATE); // R1
-IODevice ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
-IODevice PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
+GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
+GenericOutput PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
 AutoOff ACPower(4, 180000L /* 3 min */, OUTPUT_ACTIVE_STATE); // R4
-VirtualDevice Valve;
+VirtualOutput Valve;
+GenericInput WaterLeak(34, INPUT, HIGH, true);
 
 SimpleTimer timer;
 
@@ -56,14 +58,14 @@ void notifyState();
 /**
  * @brief WebSocket event handler
  * 
- * @param server 
+ * @param sv
  * @param client 
  * @param type 
  * @param arg 
  * @param data 
  * @param len 
  */
-void WSHandler(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data,
+void WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data,
                size_t len);
 
 
@@ -81,6 +83,13 @@ void setup() {
     if (!connectWiFi()) {
         Serial.println("Failed to connect to WiFi");
     }
+
+    WaterLeak.setActiveStateString("LEAK");
+    WaterLeak.setInactiveStateString("NONE");
+    WaterLeak.onActive([]() {
+        Valve.close();
+    });
+    WaterLeak.onChange(notifyState);
 
     ACPower.onPowerOn([]() {
         delay(1000); // wait for power to stabilize
@@ -108,11 +117,14 @@ void setup() {
         ValveDirection.on();
         ACPower.on();
         ValvePower.on();
+        PumpPower.off();
     });
     Valve.onPowerChanged(notifyState);
 
     ValveDirection.onPowerChanged(notifyState);
     PumpPower.onPowerChanged(notifyState);
+
+    server.onNotFound([](AsyncWebServerRequest *request) { request->send(404, "text/plain", "Not found"); });
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) { request->send(200, "text/html", MAINPAGE); });
 
@@ -175,11 +187,12 @@ void notifyState() {
     message += "R2:" + ValveDirection.getStateString() + "\n";
     message += "R3:" + PumpPower.getStateString() + "\n";
     message += "R4:" + ACPower.getStateString() + "\n";
-    message += "VALVE:" + Valve.getStateString();
+    message += "VALVE:" + Valve.getStateString() + "\n";
+    message += "WATER_LEAK:" + WaterLeak.getStateString() + "\n";
     ws.textAll(message);
 }
 
-void WSHandler(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data,
+void WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data,
                size_t len) {
     String message = (char *) data;
 
