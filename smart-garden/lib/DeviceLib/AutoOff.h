@@ -2,9 +2,9 @@
 #define AUTO_OFF_H
 
 #include <Arduino.h>
-#include "IODevice.h"
+#include "GenericOutput.h"
 
-class AutoOff : public IODevice
+class AutoOff : public GenericOutput
 {
 public:
 
@@ -15,7 +15,7 @@ public:
      * @param duration duration to turn off after power is on in milliseconds
      * @param activeState LOW or HIGH. Default is LOW
      */
-    AutoOff(uint8_t pin, unsigned long duration, bool activeState = LOW) : IODevice(pin, activeState) {
+    AutoOff(uint8_t pin, unsigned long duration, bool activeState = LOW) : GenericOutput(pin, activeState) {
         _duration = duration;
     }
     

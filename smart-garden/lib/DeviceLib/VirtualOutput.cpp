@@ -2,9 +2,9 @@
 // Created by Thái Nguyễn on 22/6/24.
 //
 
-#include "VirtualDevice.h"
+#include "VirtualOutput.h"
 
-void VirtualDevice::on() {
+void VirtualOutput::on() {
     _state = true;
     if (_onFunction != nullptr) {
         _onFunction();
@@ -17,7 +17,7 @@ void VirtualDevice::on() {
     }
 }
 
-void VirtualDevice::off() {
+void VirtualOutput::off() {
     _state = false;
     if (_offFunction != nullptr) {
         _offFunction();

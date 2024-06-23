@@ -1,6 +1,6 @@
-#include "IODevice.h"
+#include "GenericOutput.h"
 
-IODevice::IODevice(uint8_t pin, bool activeState) {
+GenericOutput::GenericOutput(uint8_t pin, bool activeState) {
     _pin = pin;
     _activeState = activeState;
     _state = false;
@@ -8,7 +8,7 @@ IODevice::IODevice(uint8_t pin, bool activeState) {
     digitalWrite(_pin, !_activeState);
 }
 
-void IODevice::on() {
+void GenericOutput::on() {
     if (_state) return;
     _state = true;
     digitalWrite(_pin, _activeState);
@@ -20,7 +20,7 @@ void IODevice::on() {
     }
 }
 
-void IODevice::off() {
+void GenericOutput::off() {
     if (!_state) return;
     _state = false;
     digitalWrite(_pin, !_activeState);
@@ -32,7 +32,7 @@ void IODevice::off() {
     }
 }
 
-void IODevice::toggle() {
+void GenericOutput::toggle() {
     if (_state) {
         off();
     } else {
@@ -40,7 +40,7 @@ void IODevice::toggle() {
     }
 }
 
-void IODevice::setState(const String& state) {
+void GenericOutput::setState(const String& state) {
     if (state.startsWith("ON")) {
         on();
     } else {
@@ -48,18 +48,18 @@ void IODevice::setState(const String& state) {
     }
 }
 
-void IODevice::setActiveState(bool activeState) {
+void GenericOutput::setActiveState(bool activeState) {
     _activeState = activeState;
 }
 
-bool IODevice::getActiveState() const {
+bool GenericOutput::getActiveState() const {
     return _activeState;
 }
 
-bool IODevice::getState() const {
+bool GenericOutput::getState() const {
     return _state;
 }
 
-String IODevice::getStateString() const {
+String GenericOutput::getStateString() const {
     return _state ? "ON" : "OFF";
 }

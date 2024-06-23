@@ -1,21 +1,21 @@
-#ifndef IO_DEVICE_H
-#define IO_DEVICE_H
+#ifndef GENERIC_OUTPUT_H
+#define GENERIC_OUTPUT_H
 
 #include <Arduino.h>
 
-class IODevice {
+class GenericOutput {
 
 public:
 
-    IODevice() { };
+    GenericOutput() { };
 
     /**
-     * @brief Construct a new IODevice object
+     * @brief Construct a new GenericOutput object
      * 
      * @param pin pin number
      * @param activeState LOW or HIGH. Default is LOW
      */
-    IODevice(uint8_t pin, bool activeState = LOW);
+    GenericOutput(uint8_t pin, bool activeState = LOW);
 
     /**
      * @brief Set powe to ON
@@ -110,4 +110,4 @@ protected:
 
 };
 
-#endif // IO_DEVICE_H
+#endif // GENERIC_OUTPUT_H

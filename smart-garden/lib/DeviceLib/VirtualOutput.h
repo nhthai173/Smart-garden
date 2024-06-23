@@ -2,17 +2,15 @@
 // Created by Thái Nguyễn on 22/6/24.
 //
 
-#ifndef SMART_GARDEN_VIRTUALDEVICE_H
-#define SMART_GARDEN_VIRTUALDEVICE_H
+#ifndef VIRTUALOUTPUT_H
+#define VIRTUALOUTPUT_H
 
-#include <utility>
+#include "GenericOutput.h"
 
-#include "IODevice.h"
-
-class VirtualDevice : public IODevice {
+class VirtualOutput : public GenericOutput {
 public:
-    VirtualDevice() : IODevice() { }
-    VirtualDevice(std::function<void()> onFunction, std::function<void()> offFunction) : IODevice() {
+    VirtualOutput() : GenericOutput() { }
+    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction) : GenericOutput() {
         _onFunction = std::move(onFunction);
         _offFunction = std::move(offFunction);
     }
@@ -86,4 +84,4 @@ protected:
 };
 
 
-#endif //SMART_GARDEN_VIRTUALDEVICE_H
+#endif //VIRTUALOUTPUT_H

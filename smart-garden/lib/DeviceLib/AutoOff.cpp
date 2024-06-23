@@ -4,13 +4,13 @@ void AutoOff::on()
 {
     if (_state) return;
     _previousMillis = millis();
-    IODevice::on();
+    GenericOutput::on();
 }
 
 void AutoOff::off()
 {
     if (!_state) return;
-    IODevice::off();
+    GenericOutput::off();
 }
 
 void AutoOff::setDuration(unsigned long duration)
