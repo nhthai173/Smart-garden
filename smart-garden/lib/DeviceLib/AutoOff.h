@@ -8,6 +8,12 @@ class AutoOff : public GenericOutput
 {
 public:
 
+    enum State {
+        OFF = 0x00,
+        ON = 0x01,
+        WAIT_FOR_ON = 0x02,
+    };
+
     AutoOff() = default;
 
     /**
@@ -17,9 +23,11 @@ public:
      * @param duration duration to turn off after power is on in milliseconds
      * @param activeState LOW or HIGH. Default is LOW
      */
-    AutoOff(uint8_t pin, unsigned long duration, bool activeState = LOW, bool autoOffEnabled = true) : GenericOutput(pin, activeState) {
+    explicit AutoOff(uint8_t pin, bool activeState = LOW, unsigned long duration = 0) : GenericOutput(pin, activeState) {
+        _autoOffEnabled = false;
         _duration = duration;
-        _autoOffEnabled = autoOffEnabled;
+        if (duration > 0)
+            _autoOffEnabled = true;
     }
     
     /**
@@ -29,18 +37,36 @@ public:
     void on() override;
 
     /**
+     * @brief set power on for a duration. Only works once
+     *
+     * @param duration
+     */
+    void on(unsigned long duration);
+
+    /**
+     * @brief set power on with percentage timing (0-100%) based on the duration
+     * @param percentage 1-100
+     */
+    void onPercentage(uint8_t percentage);
+
+    /**
      * @brief set power off immediately
      * 
      */
     void off() override;
 
     /**
+     * @brief set a delay before power on. Set to 0 to disable
+     *
+     * @param delay milliseconds
+     */
+    void setPowerOnDelay(unsigned long delay);
+
+    /**
      * @brief enable or disable auto off
      * @param autoOffEnabled true to enable, false to disable
      */
-    void setAutoOff(bool autoOffEnabled) {
-        _autoOffEnabled = autoOffEnabled;
-    }
+    void setAutoOff(bool autoOffEnabled);
 
     /**
      * @brief enable or disable auto off and set the duration
@@ -48,10 +74,7 @@ public:
      * @param autoOffEnabled
      * @param duration
      */
-    void setAutoOff(bool autoOffEnabled, unsigned long duration) {
-        _autoOffEnabled = autoOffEnabled;
-        _duration = duration;
-    }
+    void setAutoOff(bool autoOffEnabled, unsigned long duration);
 
     /**
      * @brief Set the duration to turn off after the power is on
@@ -84,7 +107,10 @@ public:
 
 protected:
     bool _autoOffEnabled = false;
-    unsigned long _duration;
+    uint8_t _pState = OFF;
+    unsigned long _duration = 0;
+    unsigned long _onceTimeDuration = 0;
+    unsigned long _pOnDelay = 0;
     unsigned long _previousMillis = 0;
     std::function<void()> _onAutoOff = nullptr;
 };

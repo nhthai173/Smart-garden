@@ -53,6 +53,23 @@ public:
         on();
     }
 
+
+    /**
+     * @brief set power on for a duration. Only works once
+     * @param duration
+     */
+    void open(unsigned long duration) {
+        AutoOff::on(duration);
+    }
+
+    /**
+     * @brief set power on with percentage timing (0-100%) based on the duration
+     * @param percentage 1-100
+     */
+    void openPercentage(uint8_t percentage) {
+        AutoOff::onPercentage(percentage);
+    }
+
     /**
      * @brief alternate name for off()
      *
