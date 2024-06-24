@@ -41,7 +41,7 @@ public:
 
     virtual void clearAllLogs();
 
-    virtual void log(String message);
+    virtual bool log(String message);
 
     virtual String getLogs();
 

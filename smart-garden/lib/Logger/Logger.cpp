@@ -107,6 +107,6 @@ String Logger::getLogs() {
 
 
 
-void Logger::log(String message) {
+bool Logger::log(String message) {
     _log(message);
 }
