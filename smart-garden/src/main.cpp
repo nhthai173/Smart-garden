@@ -21,8 +21,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.2.2"
-#define FIRMWARE_VERSION 14
+#define DEVICE_VERSION "0.2.3"
+#define FIRMWARE_VERSION 16
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -86,31 +86,6 @@ void mainLoop() {
 }
 
 
-/**
- * List all files in File system
- * @param path
- * @return
- */
-String fs_ls(const char *path) {
-    String ret = "";
-    uint8_t maxLoop = 100; // for safety
-    uint8_t loopCnt = 0;
-    File file = SPIFFS.open(path);
-    if (!file.isDirectory()) return "empty";
-    while (true) {
-        if (loopCnt >= maxLoop) break;
-        file = file.openNextFile();
-        if (!file) break;
-        ret += file.isDirectory() ? "DIR  " : "FILE ";
-        ret += String(file.path()) + " - " + String(file.size()) + " Bytes\n";
-        if (file.isDirectory()) {
-            ret += fs_ls(file.path());
-        }
-        file.close();
-        loopCnt++;
-    }
-    return ret;
-}
 
 /**
  * Set a test schedule
@@ -237,10 +212,6 @@ void setup() {
         request->send(200, "application/json", message);
     });
 
-    server.on("/fs", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/plain", fs_ls("/"));
-    });
-
 //    Add build_flags -DASYNCWEBSERVER_REGEX to enable uri regex
 //    Show file content by go to /file/<path>
 //    server.on("^\\/file\\/(.*)$", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -328,7 +299,7 @@ void setup() {
 
     ElegantOTA.onEnd([](bool isSuccess) {
         if (isSuccess) {
-            logger.log("FIRMWARE_UPDATE", "WEB", "");
+            logger.log("FIRMWARE_UPDATE", "WEB", String(FIRMWARE_VERSION));
         }
     });
 
@@ -348,7 +319,7 @@ void setup() {
     timer.setInterval(500L, mainLoop);
 
     logger.clearOldLogs();
-    logger.log("START", "SYSTEM", "");
+    logger.log("START", "SYSTEM", String(FIRMWARE_VERSION));
 }
 
 void loop() {
