@@ -19,8 +19,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.0.9"
-#define FIRMWARE_VERSION 9
+#define DEVICE_VERSION "0.0.10"
+#define FIRMWARE_VERSION 10
 
 #define WATER_LEAK_PIN 34
 #define FLOW_SENSOR_PIN 35
@@ -28,10 +28,10 @@
 
 #define OUTPUT_ACTIVE_STATE LOW
 
-AutoOff ValvePower(19, 8000L   /* 8 sec */, OUTPUT_ACTIVE_STATE); // R1
+AutoOff ValvePower(19, OUTPUT_ACTIVE_STATE, 8000L /* 8 sec */); // R1
 GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
-GenericOutput PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
-AutoOff ACPower(4, 180000L /* 3 min */, OUTPUT_ACTIVE_STATE); // R4
+AutoOff PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
+AutoOff ACPower(4, OUTPUT_ACTIVE_STATE, 180000L /* 3 min */); // R4
 VirtualOutput Valve(true, 60000L /* 1 min */);
 GenericInput WaterLeak(34, INPUT, LOW);
 
@@ -78,6 +78,7 @@ void mainLoop() {
     ValvePower.loop();
     ACPower.loop();
     Valve.loop();
+    PumpPower.loop();
     timeClient.update();
 
     // @TODO add Scheduler class to handle this
@@ -122,9 +123,7 @@ void setup() {
         ValveDirection.off();
         ACPower.on();
         ValvePower.on();
-        timer.setTimeout(8000L, []() {
-            PumpPower.on();
-        });
+        PumpPower.on();
     });
     Valve.setOffFunction([]() {
         ValveDirection.on();
@@ -134,8 +133,10 @@ void setup() {
     });
     Valve.onPowerChanged(notifyState);
 
-    ValveDirection.onPowerChanged(notifyState);
+    PumpPower.setPowerOnDelay(8000L);
     PumpPower.onPowerChanged(notifyState);
+
+    ValveDirection.onPowerChanged(notifyState);
 
     WaterLeak.setActiveStateString("LEAK");
     WaterLeak.setInactiveStateString("NONE");
@@ -193,7 +194,7 @@ void setup() {
 
     timeClient.begin();
 
-    timer.setInterval(1000L, mainLoop);
+    timer.setInterval(500L, mainLoop);
 }
 
 void loop() {
