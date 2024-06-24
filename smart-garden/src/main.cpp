@@ -21,8 +21,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.2.0"
-#define FIRMWARE_VERSION 12
+#define DEVICE_VERSION "0.2.1"
+#define FIRMWARE_VERSION 13
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -34,7 +34,7 @@ GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
 AutoOff PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
 AutoOff ACPower(4, OUTPUT_ACTIVE_STATE, 180000L /* 3 min */); // R4
 VirtualOutput Valve(true, 60000L /* 1 min */);
-GenericInput WaterLeak(34, INPUT, LOW);
+GenericInput WaterLeak(34, INPUT_PULLUP, LOW);
 
 SimpleTimer timer;
 
@@ -154,7 +154,7 @@ void WateringTaskExec(schedule_task_t<WateringTaskArgs>);
 
 void setup() {
     Serial.begin(115200);
-    while (!Serial && millis() < 2000)
+    while (!Serial && millis() < 5000)
         delay(10);
 
     if (!connectWiFi()) {
@@ -219,27 +219,27 @@ void setup() {
 
     server.on("/info", HTTP_ANY, [](AsyncWebServerRequest *request) {
         String message = "{";
-        message += "\"device\":\"" DEVICE_NAME "\",";
-        message += "\"version\":\"" DEVICE_VERSION "\",";
-        message += "\"firmware\":" + String(FIRMWARE_VERSION) + ",";
-        message += "ip:\"" + WiFi.localIP().toString() + "\",";
-        message += "\"valve\":" + Valve.getStateString() + ",";
-        message += "\"r1\":" + ValvePower.getStateString() + ",";
-        message += "\"r2\":" + ValveDirection.getStateString() + ",";
-        message += "\"r3\":" + PumpPower.getStateString() + ",";
-        message += "\"r4\":" + ACPower.getStateString() + ",";
-        message += "\"r1_auto_off\":" + String(ValvePower.getDuration()) + ",";
-        message += "\"r4_auto_off\":" + String(ACPower.getDuration()) + ",";
-        message += "\"valve\":" + Valve.getStateString() + ",";
-        message += "\"valve_auto_off\":" + String(Valve.getDuration()) + ",";
-        message += "\"water_leak\":" + WaterLeak.getStateString();
+        message += R"("device":")" DEVICE_NAME "\",";
+        message += R"("version":")" DEVICE_VERSION "\",";
+        message += R"("firmware":)" + String(FIRMWARE_VERSION) + ",";
+        message += R"("ip":")" + WiFi.localIP().toString() + "\",";
+        message += R"("valve":")" + Valve.getStateString() + "\",";
+        message += R"("r1":")" + ValvePower.getStateString() + "\",";
+        message += R"("r2":")" + ValveDirection.getStateString() + "\",";
+        message += R"("r3":")" + PumpPower.getStateString() + "\",";
+        message += R"("r4":")" + ACPower.getStateString() + "\",";
+        message += R"("r1_auto_off":)" + String(ValvePower.getDuration()) + ",";
+        message += R"("r4_auto_off":)" + String(ACPower.getDuration()) + ",";
+        message += R"("valve":")" + Valve.getStateString() + "\",";
+        message += R"("valve_auto_off":)" + String(Valve.getDuration()) + ",";
+        message += R"("water_leak":")" + WaterLeak.getStateString() + "\"";
         message += "}";
         request->send(200, "application/json", message);
     });
 
-//    server.on("/fs", HTTP_GET, [](AsyncWebServerRequest *request) {
-//        request->send(200, "text/plain", fs_ls("/"));
-//    });
+    server.on("/fs", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/plain", fs_ls("/"));
+    });
 
 //    Add build_flags -DASYNCWEBSERVER_REGEX to enable uri regex
 //    Show file content by go to /file/<path>
@@ -265,7 +265,7 @@ void setup() {
     server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/plain", "Reseting...");
         SPIFFS.format();
-        delay(1000);
+        SPIFFS.end();
         ESP.restart();
     });
 
@@ -326,6 +326,12 @@ void setup() {
         request->send(200, "text/plain", removeSchedule(id));
     });
 
+    ElegantOTA.onEnd([](bool isSuccess) {
+        if (isSuccess) {
+            logger.log("FIRMWARE_UPDATE", "WEB", "");
+        }
+    });
+
     /* ===================== */
 
     MDNS.begin(MDNS_NAME);
@@ -337,6 +343,7 @@ void setup() {
     server.begin();
 
     timeClient.begin();
+    timeClient.update();
 
     timer.setInterval(500L, mainLoop);
 
@@ -435,6 +442,7 @@ void WateringTaskExec(schedule_task_t<WateringTaskArgs> task) {
     } else {
         // open with default duration
         Valve.open();
+        // @BUG this does not log the task
         logger.log("VALVE_OPEN", "SCHEDULE", "");
     }
 
