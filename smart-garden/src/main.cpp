@@ -13,16 +13,16 @@
 #include "GenericInput.h"
 #include "VirtualOutput.h"
 #include "AutoOff.h"
+#include "WateringSchedule.h"
 
 #include "MAIN_PAGE.h"
 #include "secret.h"
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.0.10"
-#define FIRMWARE_VERSION 10
+#define DEVICE_VERSION "0.1.0"
+#define FIRMWARE_VERSION 11
 
-#define WATER_LEAK_PIN 34
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
 
@@ -42,7 +42,7 @@ NTPClient timeClient = NTPClient(ntpUDP, "pool.ntp.org", 7 * 3600);
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
-bool scheduleLoopExecuted = false;
+Scheduler<WateringTaskArgs> scheduler(&timeClient);
 
 
 /**
@@ -80,17 +80,74 @@ void mainLoop() {
     Valve.loop();
     PumpPower.loop();
     timeClient.update();
-
-    // @TODO add Scheduler class to handle this
-    if (timeClient.getHours() == 7 && timeClient.getMinutes() == 0) {
-        if (!scheduleLoopExecuted) {
-            scheduleLoopExecuted = true;
-            Valve.open();
-        }
-    } else if (scheduleLoopExecuted) {
-        scheduleLoopExecuted = false;
-    }
+    scheduler.run();
 }
+
+
+/**
+ * List all files in File system
+ * @param path
+ * @return
+ */
+String fs_ls(const char *path) {
+    String ret = "";
+    uint8_t maxLoop = 100; // for safety
+    uint8_t loopCnt = 0;
+    File file = SPIFFS.open(path);
+    if (!file.isDirectory()) return "empty";
+    while (true) {
+        if (loopCnt >= maxLoop) break;
+        file = file.openNextFile();
+        if (!file) break;
+        ret += file.isDirectory() ? "DIR  " : "FILE ";
+        ret += String(file.path()) + " - " + String(file.size()) + " Bytes\n";
+        if (file.isDirectory()) {
+            ret += fs_ls(file.path());
+        }
+        file.close();
+        loopCnt++;
+    }
+    return ret;
+}
+
+/**
+ * Set a test schedule
+ * @return
+ */
+String setTestSchedule(uint8_t id, uint8_t hour, uint8_t min) {
+    if (scheduler.getTaskById(id).id) return "Schedule already set";
+    schedule_task_t<WateringTaskArgs> task = {
+            .id = id,
+            .time = {
+                    .hour = hour,
+                    .minute = min
+            },
+            .repeat = {
+                    .monday = true,
+                    .tuesday = true,
+                    .wednesday = true,
+                    .thursday = true,
+                    .friday = true,
+                    .saturday = true,
+                    .sunday = true
+            },
+            .args = new WateringTaskArgs(),
+            .enabled = true,
+            .executed = false
+    };
+    return scheduler.addTask(task) ? "Schedule set" : "Failed to set schedule";
+}
+
+String removeSchedule(uint8_t id) {
+    return scheduler.removeTask(id) ? "Schedule removed" : "Failed to remove schedule";
+}
+
+/**
+ * @brief Execute a watering task from schedule
+ *
+ * @param task
+ */
+void WateringTaskExec(schedule_task_t<WateringTaskArgs>);
 
 
 void setup() {
@@ -145,6 +202,8 @@ void setup() {
         Valve.close();
     });
 
+    scheduler.setCallback(WateringTaskExec);
+
     server.onNotFound([](AsyncWebServerRequest *request) { request->send(404, "text/plain", "Not found"); });
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) { request->send(200, "text/html", MAINPAGE); });
@@ -169,12 +228,43 @@ void setup() {
         request->send(200, "application/json", message);
     });
 
+//    server.on("/fs", HTTP_GET, [](AsyncWebServerRequest *request) {
+//        request->send(200, "text/plain", fs_ls("/"));
+//    });
+
+//    Add build_flags -DASYNCWEBSERVER_REGEX to enable uri regex
+//    Show file content by go to /file/<path>
+//    server.on("^\\/file\\/(.*)$", HTTP_GET, [](AsyncWebServerRequest *request) {
+//        String filePath = request->pathArg(0);
+//        String ret = "Open file " + filePath + "\n";
+//        File f = SPIFFS.open(filePath.c_str(), "r");
+//        if (!f || !f.size()) {
+//            ret += "File not found or empty";
+//            request->send(404, "text/plain", ret);
+//            return;
+//        }
+//        ret += f.readString();
+//        request->send(200, "text/plain", ret);
+//    });
+
     server.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/plain", "Restarting...");
         delay(1000);
         ESP.restart();
     });
 
+    server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/plain", "Reseting...");
+        SPIFFS.format();
+        delay(1000);
+        ESP.restart();
+    });
+
+
+    /**
+     * Endpoint /watering
+     * @param stop - stop watering
+     */
     server.on("/watering", HTTP_ANY, [](AsyncWebServerRequest *request) {
         if (request->hasParam("stop")) {
             Valve.close();
@@ -183,6 +273,45 @@ void setup() {
         }
         request->send(200, "text/plain", "OK");
     });
+
+
+    server.on("/schedules", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String ret = "Object task count: " + String(scheduler.getTaskCount()) + "\n";
+        ret += "Read from file:\n" + scheduler.getString();
+        request->send(200, "text/plain", ret);
+    });
+
+    server.on("/test-schedule", HTTP_GET, [](AsyncWebServerRequest *request) {
+        uint8_t id = 0, hour, min;
+        if (request->hasParam("id")) {
+            id = request->getParam("id")->value().toInt();
+        }
+        if (request->hasParam("hour")) {
+            hour = request->getParam("hour")->value().toInt();
+        }
+        if (request->hasParam("minute")) {
+            min = request->getParam("minute")->value().toInt();
+        }
+        if (!id) {
+            request->send(400, "text/plain", "Invalid id");
+            return;
+        }
+        request->send(200, "text/plain", setTestSchedule(id, hour, min));
+    });
+
+    server.on("/remove-schedule", HTTP_GET, [](AsyncWebServerRequest *request) {
+        uint8_t id = 0;
+        if (request->hasParam("id")) {
+            id = request->getParam("id")->value().toInt();
+        }
+        if (!id) {
+            request->send(400, "text/plain", "Invalid id");
+            return;
+        }
+        request->send(200, "text/plain", removeSchedule(id));
+    });
+
+    /* ===================== */
 
     MDNS.begin(MDNS_NAME);
     MDNS.addService("http", "tcp", 80);
@@ -269,5 +398,30 @@ void WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType ty
             break;
         default:
             break;
+    }
+}
+
+
+void WateringTaskExec(schedule_task_t<WateringTaskArgs> task) {
+    if (task.args->waterLiters == 0 && task.args->duration == 0) {
+        return;
+    }
+
+    // @TODO implement for litters amount
+    if (task.args->waterLiters > 0) {
+    }
+
+    if (task.args->duration > 0) {
+        Valve.open(task.args->duration * 60000L);
+    } else {
+        // open with default duration
+        Valve.open();
+    }
+
+    // if specified, open the valve to a certain level
+    if (task.args->valveOpenLevel > 0) {
+        ValvePower.off();
+        delay(1000);
+        ValvePower.on(task.args->valveOpenLevel * 10);
     }
 }
