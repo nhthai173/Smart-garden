@@ -59,13 +59,17 @@ void Logger::clearOldLogs() {
 
     while (file.available()) {
         String line = file.readStringUntil('\n');
+        if (line.length() < 10) { // invalid time
+            continue;
+        }
         int index = line.indexOf(' ');
-        if (index == -1) {
+        if (index < 10) { // invalid time
             continue;
         }
 
         unsigned long time = line.substring(0, index).toInt();
         if (time >= minTime) {
+            line.trim();
             tempFile.println(line);
         }
     }
