@@ -21,8 +21,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.2.1"
-#define FIRMWARE_VERSION 13
+#define DEVICE_VERSION "0.2.2"
+#define FIRMWARE_VERSION 14
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -362,7 +362,7 @@ bool connectWiFi() {
     unsigned long start = millis();
     Serial.printf("Connecting to %s\n", WIFI_SSID);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
+    while (WiFiClass::status() != WL_CONNECTED) {
         if (millis() - start > 20000) { // timeout after 20 seconds
             Serial.println("Connection failed");
             return false;
@@ -442,8 +442,6 @@ void WateringTaskExec(schedule_task_t<WateringTaskArgs> task) {
     } else {
         // open with default duration
         Valve.open();
-        // @BUG this does not log the task
-        logger.log("VALVE_OPEN", "SCHEDULE", "");
     }
 
     // if specified, open the valve to a certain level
@@ -452,4 +450,6 @@ void WateringTaskExec(schedule_task_t<WateringTaskArgs> task) {
         delay(1000);
         ValvePower.on(task.args->valveOpenLevel * 10);
     }
+
+    logger.log("VALVE_OPEN", "SCHEDULE", task.args->toString());
 }
