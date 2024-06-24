@@ -11,10 +11,27 @@ class SLog : public Logger {
 
 public:
     explicit SLog(NTPClient *timeClient) : Logger(timeClient) {
+        filePath = "/slog.txt";
     }
 
-    bool log(const String& event, const String& source, const String& message) {
-        return Logger::log(event + "-" + source + "-" + message);
+    void clearOldLogs() override {
+        Logger::clearOldLogs();
+    }
+
+    void clearAllLogs() override {
+        Logger::clearAllLogs();
+    }
+
+    bool log(const String& message) {
+        return Logger::log(message);
+    }
+
+    String getLogs() override {
+        return Logger::getLogs();
+    }
+
+    bool log(const String& event, const String& source, const String& message = "") {
+        return log(event + "-" + source + "-" + message);
     }
 
 };
