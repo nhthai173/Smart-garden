@@ -4,9 +4,11 @@
 
 #include "Logger.h"
 
+#include <utility>
+
 Logger::Logger(NTPClient *timeClient) {
     _timeClient = timeClient;
-    LOG_FS.begin(true);
+    LOG_FS.begin();
 
     if (!LOG_FS.exists(filePath)) {
 #if defined(ESP8266)
@@ -108,5 +110,5 @@ String Logger::getLogs() {
 
 
 bool Logger::log(String message) {
-    _log(message);
+    return _log(std::move(message));
 }
