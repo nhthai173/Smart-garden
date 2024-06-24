@@ -5,7 +5,7 @@
 template<typename T>
 Scheduler<T>::Scheduler(NTPClient *timeClient) {
     this->timeClient = timeClient;
-    SCHEDULE_FS.begin(true);
+    SCHEDULE_FS.begin();
 
     // Load tasks from file
     load();
