@@ -14,14 +14,15 @@
 #include "VirtualOutput.h"
 #include "AutoOff.h"
 #include "WateringSchedule.h"
+#include "SLog.h"
 
 #include "MAIN_PAGE.h"
 #include "secret.h"
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.1.0"
-#define FIRMWARE_VERSION 11
+#define DEVICE_VERSION "0.2.0"
+#define FIRMWARE_VERSION 12
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -43,6 +44,7 @@ AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
 Scheduler<WateringTaskArgs> scheduler(&timeClient);
+SLog logger(&timeClient);
 
 
 /**
@@ -189,6 +191,9 @@ void setup() {
         PumpPower.off();
     });
     Valve.onPowerChanged(notifyState);
+    Valve.onAutoOff([]() {
+        logger.log("VALVE_CLOSE", "AUTO_TIMEOUT", "");
+    });
 
     PumpPower.setPowerOnDelay(8000L);
     PumpPower.onPowerChanged(notifyState);
@@ -197,9 +202,13 @@ void setup() {
 
     WaterLeak.setActiveStateString("LEAK");
     WaterLeak.setInactiveStateString("NONE");
-    WaterLeak.onChange(notifyState);
+    WaterLeak.onChange([](){
+        notifyState();
+        logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
+    });
     WaterLeak.onActive([]() {
         Valve.close();
+        logger.log("VALVE_CLOSE", "WATER_LEAK", "");
     });
 
     scheduler.setCallback(WateringTaskExec);
@@ -268,12 +277,18 @@ void setup() {
     server.on("/watering", HTTP_ANY, [](AsyncWebServerRequest *request) {
         if (request->hasParam("stop")) {
             Valve.close();
+            logger.log("VALVE_CLOSE", "API", request->client()->remoteIP().toString());
         } else {
             Valve.open();
+            logger.log("VALVE_OPEN", "API", request->client()->remoteIP().toString());
         }
         request->send(200, "text/plain", "OK");
     });
 
+
+    server.on("/logs", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/plain", logger.getLogs());
+    });
 
     server.on("/schedules", HTTP_GET, [](AsyncWebServerRequest *request) {
         String ret = "Object task count: " + String(scheduler.getTaskCount()) + "\n";
@@ -324,6 +339,9 @@ void setup() {
     timeClient.begin();
 
     timer.setInterval(500L, mainLoop);
+
+    logger.clearOldLogs();
+    logger.log("START", "SYSTEM", "");
 }
 
 void loop() {
@@ -390,6 +408,7 @@ void WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType ty
                 } else {
                     Valve.close();
                 }
+                logger.log("VALVE_" + message.substring(6), "WEB", client->remoteIP().toString());
             }
             break;
         case WS_EVT_PONG:
@@ -416,6 +435,7 @@ void WateringTaskExec(schedule_task_t<WateringTaskArgs> task) {
     } else {
         // open with default duration
         Valve.open();
+        logger.log("VALVE_OPEN", "SCHEDULE", "");
     }
 
     // if specified, open the valve to a certain level
