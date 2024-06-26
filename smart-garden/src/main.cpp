@@ -21,13 +21,15 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.2.3"
-#define FIRMWARE_VERSION 16
+#define DEVICE_VERSION "0.2.4"
+#define FIRMWARE_VERSION 19
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
 
 #define OUTPUT_ACTIVE_STATE LOW
+
+float Voltage = 0.0;
 
 AutoOff ValvePower(19, OUTPUT_ACTIVE_STATE, 8000L /* 8 sec */); // R1
 GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
@@ -75,6 +77,20 @@ void notifyState();
  */
 void WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data,
                size_t len);
+
+
+
+
+float readVoltage() {
+    const float r1 = 10.0;
+    const float r2 = 3.33; // @TODO change to 2K ohm - normally Vout = 2V (for Vin = 12V)
+    float voltage = analogRead(VOLTAGE_PIN) / 4095.0 * 3.3;
+    Voltage = voltage;
+    return voltage * (r1 + r2) / r2;
+}
+
+
+
 
 void mainLoop() {
     ValvePower.loop();
@@ -128,6 +144,8 @@ void WateringTaskExec(schedule_task_t<WateringTaskArgs>);
 
 
 void setup() {
+    pinMode(VOLTAGE_PIN, INPUT);
+
     Serial.begin(115200);
     while (!Serial && millis() < 5000)
         delay(10);
@@ -198,6 +216,7 @@ void setup() {
         message += R"("version":")" DEVICE_VERSION "\",";
         message += R"("firmware":)" + String(FIRMWARE_VERSION) + ",";
         message += R"("ip":")" + WiFi.localIP().toString() + "\",";
+        message += R"("voltage":)" + String(readVoltage()) + ",";
         message += R"("valve":")" + Valve.getStateString() + "\",";
         message += R"("r1":")" + ValvePower.getStateString() + "\",";
         message += R"("r2":")" + ValveDirection.getStateString() + "\",";
