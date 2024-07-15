@@ -12,6 +12,7 @@
 #include "GenericOutput.h"
 #include "GenericInput.h"
 #include "VirtualOutput.h"
+#include "VoltageReader.h"
 #include "AutoOff.h"
 #include "WateringSchedule.h"
 #include "SLog.h"
@@ -21,8 +22,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.2.3"
-#define FIRMWARE_VERSION 16
+#define DEVICE_VERSION "0.2.5"
+#define FIRMWARE_VERSION 20
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -35,6 +36,7 @@ AutoOff PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
 AutoOff ACPower(4, OUTPUT_ACTIVE_STATE, 180000L /* 3 min */); // R4
 VirtualOutput Valve(true, 60000L /* 1 min */);
 GenericInput WaterLeak(34, INPUT_PULLUP, LOW);
+VoltageReader PowerVoltage(32, 10.0, 3.33, 0.3, 10.5, 13.5);
 
 SimpleTimer timer;
 
@@ -49,29 +51,29 @@ SLog logger(&timeClient);
 
 /**
  * @brief Connect known WiFi network
- * 
- * @return true 
- * @return false 
+ *
+ * @return true
+ * @return false
  */
 bool connectWiFi();
 
 
 /**
  * @brief Notify all clients of the current state
- * 
- * @param server 
+ *
+ * @param server
  */
 void notifyState();
 
 /**
  * @brief WebSocket event handler
- * 
+ *
  * @param sv
- * @param client 
- * @param type 
- * @param arg 
- * @param data 
- * @param len 
+ * @param client
+ * @param type
+ * @param arg
+ * @param data
+ * @param len
  */
 void WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data,
                size_t len);
@@ -83,6 +85,7 @@ void mainLoop() {
     PumpPower.loop();
     timeClient.update();
     scheduler.run();
+    PowerVoltage.loop();
 }
 
 
@@ -198,6 +201,7 @@ void setup() {
         message += R"("version":")" DEVICE_VERSION "\",";
         message += R"("firmware":)" + String(FIRMWARE_VERSION) + ",";
         message += R"("ip":")" + WiFi.localIP().toString() + "\",";
+        message += R"("voltage":)" + String(PowerVoltage.get()) + ",";
         message += R"("valve":")" + Valve.getStateString() + "\",";
         message += R"("r1":")" + ValvePower.getStateString() + "\",";
         message += R"("r2":")" + ValveDirection.getStateString() + "\",";
