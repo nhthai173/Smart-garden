@@ -26,7 +26,7 @@ float VoltageReader::get() {
 
 float VoltageReader::_read() {
     float v = analogRead(pin) / 4095.0 * 3.3;
-    if (R1 && R2 > 0) {
+    if (R1 > 0 && R2 > 0) {
         return v * (R1 + R2) / R2;
     }
     return v;

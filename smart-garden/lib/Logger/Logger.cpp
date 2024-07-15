@@ -22,12 +22,19 @@ Logger::Logger(NTPClient *timeClient) {
 }
 
 bool Logger::_log(String message) {
+    if (!_timeClient->isTimeSet()) {
+        _timeClient->begin();
+        _timeClient->update();
+        log_item_t item = {millis(), std::move(message)};
+        log_queue.push_back(item);
+        return false;
+    }
+
     File file = LOG_FS.open(filePath, "a");
     if (!file || file.name() == nullptr) {
         return false;
     }
 
-    _timeClient->update();
     file.printf("%ld %s\n", _timeClient->getEpochTime(), message.c_str());
     file.close();
     return true;
@@ -115,4 +122,30 @@ String Logger::getLogs() {
 
 bool Logger::log(String message) {
     return _log(std::move(message));
+}
+
+
+
+void Logger::processQueue() {
+    if (!_timeClient->isTimeSet()) {
+        return;
+    }
+    if (log_queue.empty()) {
+        return;
+    }
+
+    String items = "";
+    uint32_t now = _timeClient->getEpochTime();
+    File file = LOG_FS.open(filePath, "a");
+    if (!file || file.name() == nullptr) {
+        return;
+    }
+
+    for (auto &item : log_queue) {
+        items += String(now - round((millis() - item.time)/1000));
+        items += " " + item.message + "\n";
+    }
+    log_queue.clear();
+    file.print(items);
+    file.close();
 }

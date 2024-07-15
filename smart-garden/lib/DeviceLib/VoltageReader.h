@@ -38,10 +38,10 @@ public:
         _onHigh = callback;
     }
 private:
-    std::function<void()> _onChanged;
-    std::function<void()> _onUnsafe;
-    std::function<void()> _onLow;
-    std::function<void()> _onHigh;
+    std::function<void()> _onChanged = nullptr;
+    std::function<void()> _onUnsafe = nullptr;
+    std::function<void()> _onLow = nullptr;
+    std::function<void()> _onHigh = nullptr;
     float _read();
 };
 

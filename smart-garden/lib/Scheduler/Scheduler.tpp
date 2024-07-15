@@ -1,7 +1,3 @@
-#pragma once
-
-#include "Scheduler.hpp"
-
 template<typename T>
 Scheduler<T>::Scheduler(NTPClient *timeClient) {
     this->timeClient = timeClient;
@@ -244,6 +240,12 @@ bool Scheduler<T>::updateTask(uint8_t id, schedule_task_t<T> task) {
 
 template<typename T>
 void Scheduler<T>::run() {
+    if (!timeClient->isTimeSet()) {
+        timeClient->begin();
+        timeClient->update();
+        return;
+    }
+
     uint8_t h = timeClient->getHours();
     uint8_t m = timeClient->getMinutes();
     uint8_t dow = timeClient->getDay(); // 0 is sunday

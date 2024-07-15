@@ -198,6 +198,6 @@ private:
     
 };
 
-#include "Scheduler.cpp"
+#include "Scheduler.tpp"
 
 #endif //SCHEDULER_HPP

@@ -22,8 +22,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.2.5"
-#define FIRMWARE_VERSION 20
+#define DEVICE_VERSION "0.2.6"
+#define FIRMWARE_VERSION 22
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -84,8 +84,9 @@ void mainLoop() {
     Valve.loop();
     PumpPower.loop();
     timeClient.update();
-    scheduler.run();
     PowerVoltage.loop();
+    scheduler.run();
+    logger.processQueue();
 }
 
 
