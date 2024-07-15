@@ -6,19 +6,15 @@
 
 void VirtualOutput::on() {
     if (_state) return;
-    if (_pOnDelay > 0 && _pState != stdGenericOutput::ON)
+    if (_pOnDelay > 0 && _pState != ON)
     {
-        _pState = stdGenericOutput::WAIT_FOR_ON;
-        _ticker.detach();
-        _ticker.once_ms(_pOnDelay, _onTick, this);
+        _previousMillis = millis();
+        _pState = WAIT_FOR_ON;
         return;
     }
-    _pState = stdGenericOutput::ON;
+    _pState = ON;
     _state = true;
-    if (_autoOffEnabled && _duration > 0) {
-        _ticker.detach();
-        _ticker.once_ms(_duration, _onTick, this);
-    }
+    _previousMillis = millis();
     if (_onFunction != nullptr) {
         _onFunction();
     }
@@ -34,8 +30,7 @@ void VirtualOutput::on() {
 void VirtualOutput::off() {
     if (!_state) return;
     _state = false;
-    _pState = stdGenericOutput::OFF;
-    _ticker.detach();
+    _pState = OFF;
     if (_offFunction != nullptr) {
         _offFunction();
     }

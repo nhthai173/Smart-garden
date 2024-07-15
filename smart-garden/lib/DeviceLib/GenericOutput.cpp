@@ -1,75 +1,65 @@
 #include "GenericOutput.h"
 
-void GenericOutput::on()
-{
+GenericOutput::GenericOutput(uint8_t pin, bool activeState) {
+    _pin = pin;
+    _activeState = activeState;
+    _state = false;
+    pinMode(_pin, OUTPUT);
+    digitalWrite(_pin, !_activeState);
+}
+
+void GenericOutput::on() {
     if (_state) return;
-    if (_pOnDelay > 0 && _pState != stdGenericOutput::ON)
-    {
-        _pState = stdGenericOutput::WAIT_FOR_ON;
-        _ticker.detach();
-        _ticker.once_ms(_pOnDelay, _onTick, this);
-        return;
+    _state = true;
+    digitalWrite(_pin, _activeState);
+    if (_onPowerOn != nullptr) {
+        _onPowerOn();
     }
-    _pState = stdGenericOutput::ON;
-    GenericOutputBase::on();
-    if (_autoOffEnabled && _duration > 0)
-    {
-        _ticker.detach();
-        _ticker.once_ms(_duration, _onTick, this);
+    if (_onPowerChanged != nullptr) {
+        _onPowerChanged();
     }
 }
 
-void GenericOutput::on(uint32_t duration) {
-    _pState = stdGenericOutput::ON;
-    GenericOutputBase::on();
-    if (_autoOffEnabled)
-    {
-        _ticker.detach();
-        _ticker.once_ms(duration, _onTick, this);
-    }
-}
-
-void GenericOutput::onPercentage(uint8_t percentage) {
-    if (percentage < 1 || percentage > 100) return;
-    on(_duration * percentage / 100);
-}
-
-void GenericOutput::off()
-{
+void GenericOutput::off() {
     if (!_state) return;
-    _pState = stdGenericOutput::OFF;
-    GenericOutputBase::off();
-    _ticker.detach();
+    _state = false;
+    digitalWrite(_pin, !_activeState);
+    if (_onPowerOff != nullptr) {
+        _onPowerOff();
+    }
+    if (_onPowerChanged != nullptr) {
+        _onPowerChanged();
+    }
 }
 
-void GenericOutput::setPowerOnDelay(uint32_t delay)
-{
-    _pOnDelay = delay;
+void GenericOutput::toggle() {
+    if (_state) {
+        off();
+    } else {
+        on();
+    }
 }
 
-void GenericOutput::setAutoOff(bool autoOffEnabled) {
-    _autoOffEnabled = autoOffEnabled;
+void GenericOutput::setState(const String& state) {
+    if (state.startsWith("ON")) {
+        on();
+    } else {
+        off();
+    }
 }
 
-void GenericOutput::setAutoOff(bool autoOffEnabled, uint32_t duration) {
-    _autoOffEnabled = autoOffEnabled;
-    _duration = duration;
+void GenericOutput::setActiveState(bool activeState) {
+    _activeState = activeState;
 }
 
-void GenericOutput::setDuration(uint32_t duration)
-{
-    _duration = duration;
-    if (duration > 0)
-        _autoOffEnabled = true;
-    else
-        _autoOffEnabled = false;
+bool GenericOutput::getActiveState() const {
+    return _activeState;
 }
 
-uint32_t GenericOutput::getDuration() const
-{
-    return _duration;
+bool GenericOutput::getState() const {
+    return _state;
 }
 
-uint32_t GenericOutput::getPowerOnDelay() const {
-    return _pOnDelay;
+String GenericOutput::getStateString() const {
+    return _state ? "ON" : "OFF";
 }

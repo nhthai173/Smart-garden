@@ -1,164 +1,113 @@
 #ifndef GENERIC_OUTPUT_H
 #define GENERIC_OUTPUT_H
 
-#include "GenericOutputBase.h"
-#include <Ticker.h>
+#include <Arduino.h>
 
-namespace stdGenericOutput {
+class GenericOutput {
 
-    typedef enum {
-        OFF = 0x00,
-        ON = 0x01,
-        WAIT_FOR_ON = 0x02,
-    } state_t;
-
-    class GenericOutput;
-}
-
-class stdGenericOutput::GenericOutput: public stdGenericOutput::GenericOutputBase
-{
 public:
 
     GenericOutput() = default;
 
-
     /**
-     * @brief Construct a new Auto Off object
-     *
+     * @brief Construct a new GenericOutput object
+     * 
      * @param pin pin number
      * @param activeState LOW or HIGH. Default is LOW
-     * @param duration duration to turn off after power is on in milliseconds
      */
-    explicit GenericOutput(uint8_t pin, bool activeState = LOW, uint32_t duration = 0) : GenericOutputBase(pin, activeState) {
-        _autoOffEnabled = false;
-        _duration = duration;
-        if (duration > 0)
-            _autoOffEnabled = true;
+    explicit GenericOutput(uint8_t pin, bool activeState = LOW);
+
+    /**
+     * @brief Set powe to ON
+     * 
+     */
+    virtual void on();
+
+    /**
+     * @brief Set power to OFF
+     * 
+     */
+    virtual void off();
+
+    /**
+     * @brief Toggle power
+     * 
+     */
+    void toggle();
+
+    /**
+     * @brief Set the power state from string "ON" or "OFF"
+     * 
+     * @param state 
+     */
+    void setState(const String& state);
+
+    /**
+     * @brief Set the Active State object
+     * 
+     * @param activeState 
+     */
+    void setActiveState(bool activeState);
+
+    /**
+     * @brief Get the Active State object
+     * 
+     * @return true 
+     * @return false 
+     */
+    bool getActiveState() const;
+
+    /**
+     * @brief Get current state of the device
+     * 
+     * @return true when ON
+     * @return false when OFF
+     */
+    bool getState() const;
+
+    /**
+     * @brief Get current state of the device as string "ON" or "OFF"
+     *
+     * @return String
+     
+     */
+    String getStateString() const;
+
+    /**
+     * @brief Set callback function to be called when power is on
+     *
+     * @param onPowerOn
+     */
+    void onPowerOn(std::function<void()> onPowerOn) {
+        _onPowerOn = std::move(onPowerOn);
     }
 
-#if defined(USE_PCF8574)
-
     /**
-     * @brief Construct a new Auto Off object
+     * @brief Set callback function to be called when power is off
      *
-     * @param pcf8574 PCF8574 object
-     * @param pin pin number
-     * @param activeState LOW or HIGH. Default is LOW
-     * @param duration duration to turn off after power is on in milliseconds
+     * @param onPowerOff
      */
-    explicit GenericOutput(PCF8574& pcf8574, uint8_t pin, bool activeState = LOW, uint32_t duration = 0) : GenericOutputBase(pcf8574, pin, activeState) {
-        _autoOffEnabled = false;
-        _duration = duration;
-        if (duration > 0)
-            _autoOffEnabled = true;
+    void onPowerOff(std::function<void()> onPowerOff) {
+        _onPowerOff = std::move(onPowerOff);
     }
 
-#endif
-
     /**
-     * @brief set power on
+     * @brief Set callback function to be called when power is changed
      *
+     * @param onPowerChanged
      */
-    void on() override;
-
-    /**
-     * @brief set power on for a duration. Only works once
-     *
-     * @param duration
-     */
-    void on(uint32_t duration);
-
-    /**
-     * @brief set power on with percentage timing (0-100%) based on the duration
-     * @param percentage 1-100
-     */
-    void onPercentage(uint8_t percentage);
-
-    /**
-     * @brief set power off immediately
-     *
-     */
-    void off() override;
-
-    /**
-     * @brief set a delay before power on. Set to 0 to disable
-     *
-     * @param delay milliseconds
-     */
-    void setPowerOnDelay(uint32_t delay);
-
-    /**
-     * @brief enable or disable auto off
-     * @param autoOffEnabled true to enable, false to disable
-     */
-    void setAutoOff(bool autoOffEnabled);
-
-    /**
-     * @brief enable or disable auto off and set the duration
-     *
-     * @param autoOffEnabled
-     * @param duration
-     */
-    void setAutoOff(bool autoOffEnabled, uint32_t duration);
-
-    /**
-     * @brief Set the duration to turn off after the power is on
-     *
-     * @param duration
-     */
-    void setDuration(uint32_t duration);
-
-    /**
-     * @brief Get the Duration object
-     *
-     * @return uint32_t
-     */
-    uint32_t getDuration() const;
-
-    /**
-     * @brief Get the Power On Delay object
-     *
-     * @return uint32_t
-     */
-    uint32_t getPowerOnDelay() const;
-
-    /**
-     * @brief Set the callback function to be called when power is turned off automatically
-     *
-     * @param onAutoOff callback function
-     */
-    void onAutoOff(std::function<void()> onAutoOff) {
-        _onAutoOff = std::move(onAutoOff);
+    void onPowerChanged(std::function<void()> onPowerChanged) {
+        _onPowerChanged = std::move(onPowerChanged);
     }
 
 protected:
-    Ticker _ticker;
-    bool _autoOffEnabled = false;
-    state_t _pState = stdGenericOutput::OFF;
-    uint32_t _duration = 0;
-    uint32_t _pOnDelay = 0;
-    std::function<void()> _onAutoOff = nullptr;
+    uint8_t _pin;
+    bool _activeState;
+    bool _state;
+    std::function<void()> _onPowerOn = nullptr;
+    std::function<void()> _onPowerOff = nullptr;
+    std::function<void()> _onPowerChanged = nullptr;
 
-    /**
-     * @brief Ticker callback handler
-     * @param pOutput
-     */
-    static void _onTick(GenericOutput* pOutput) {
-        if (pOutput->_pState == stdGenericOutput::WAIT_FOR_ON) {
-            pOutput->_pState = stdGenericOutput::ON;
-            pOutput->on();
-        } else if (pOutput->_pState == stdGenericOutput::ON) {
-            pOutput->off();
-            if (pOutput->_onAutoOff != nullptr) {
-                pOutput->_onAutoOff();
-            }
-        }
-    }
 };
 
-
-
-
-using stdGenericOutput::GenericOutput;
-
-#endif //GENERIC_OUTPUT_H
+#endif // GENERIC_OUTPUT_H

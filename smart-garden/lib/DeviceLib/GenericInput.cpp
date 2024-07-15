@@ -5,24 +5,35 @@
 #include "GenericInput.h"
 
 
-GenericInput::GenericInput(uint8_t pin, uint8_t mode, bool activeState, uint32_t debounceTime, bool useInterrupt) {
+GenericInput::GenericInput(uint8_t pin, uint8_t mode, bool activeState, uint32_t debounceTime) {
     pinMode(pin, mode);
     _pin = pin;
     _activeState = activeState;
     _lastState = digitalRead(_pin);
+    _lastReadState = _lastState;
     _debounceTime = debounceTime;
-    if (useInterrupt) {
-        attachInterrupt(CHANGE);
+}
+
+void GenericInput::loop() {
+    bool currentState = digitalRead(_pin);
+    if (currentState != _lastReadState) {
+        _lastDebounceTime = millis();
     }
+    if (millis() - _lastDebounceTime >= _debounceTime) {
+        if (currentState == _lastState) return;
+        _lastState = currentState;
+        if (currentState == _activeState) {
+            if (_onActiveCB != nullptr) {
+                _onActiveCB();
+            }
+        } else {
+            if (_onInactiveCB != nullptr) {
+                _onInactiveCB();
+            }
+        }
+        if (_onChangeCB != nullptr) {
+            _onChangeCB();
+        }
+    }
+    _lastReadState = currentState;
 }
-
-
-#if defined(USE_PCF8574)
-GenericInput::GenericInput(PCF8574 &pcf8574, uint8_t pin, uint8_t mode, bool activeState, uint32_t debounceTime) {
-    _pcf8574 = &pcf8574;
-    _pin = pin;
-    _activeState = activeState;
-    _lastState = _pcf8574->digitalRead(_pin);
-    _debounceTime = debounceTime;
-}
-#endif

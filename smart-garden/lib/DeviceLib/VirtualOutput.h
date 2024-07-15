@@ -5,11 +5,11 @@
 #ifndef VIRTUALOUTPUT_H
 #define VIRTUALOUTPUT_H
 
-#include "GenericOutput.h"
+#include "AutoOff.h"
 
-class VirtualOutput : public GenericOutput {
+class VirtualOutput : public AutoOff {
 public:
-    VirtualOutput() : GenericOutput() { }
+    VirtualOutput() : AutoOff() { }
 
     /**
      * @brief Construct a new Virtual Output object
@@ -17,7 +17,7 @@ public:
      * @param offFunction function to execute when power is off
      * @param autoOffEnabled enable auto off feature
      */
-    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction, bool autoOffEnabled = false) : GenericOutput() {
+    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction, bool autoOffEnabled = false) : AutoOff() {
         _onFunction = std::move(onFunction);
         _offFunction = std::move(offFunction);
         _autoOffEnabled = autoOffEnabled;
@@ -28,7 +28,7 @@ public:
      * @param autoOffEnabled enable auto off feature
      * @param duration duration to turn off after power is on in milliseconds
      */
-    VirtualOutput(bool autoOffEnabled, unsigned long duration) : GenericOutput() {
+    VirtualOutput(bool autoOffEnabled, unsigned long duration) : AutoOff() {
         _autoOffEnabled = autoOffEnabled;
         _duration = duration;
     }
@@ -59,7 +59,7 @@ public:
      * @param duration
      */
     void open(unsigned long duration) {
-        GenericOutput::on(duration);
+        AutoOff::on(duration);
     }
 
     /**
@@ -67,7 +67,7 @@ public:
      * @param percentage 1-100
      */
     void openPercentage(uint8_t percentage) {
-        GenericOutput::onPercentage(percentage);
+        AutoOff::onPercentage(percentage);
     }
 
     /**
@@ -116,21 +116,6 @@ protected:
     std::function<void()> _onFunction = nullptr;
     std::function<void()> _offFunction = nullptr;
 
-    /**
-     * @brief Ticker callback handler
-     * @param pOutput
-     */
-    static void _onTick(VirtualOutput* pOutput) {
-        if (pOutput->_pState == stdGenericOutput::WAIT_FOR_ON) {
-            pOutput->_pState = stdGenericOutput::ON;
-            pOutput->on();
-        } else if (pOutput->_pState == stdGenericOutput::ON) {
-            pOutput->off();
-            if (pOutput->_onAutoOff != nullptr) {
-                pOutput->_onAutoOff();
-            }
-        }
-    }
 };
 
 
