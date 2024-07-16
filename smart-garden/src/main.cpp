@@ -2,10 +2,9 @@
 #include <WiFi.h>
 
 #include <SimpleTimer.h>
-#include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ElegantOTA.h>
-#include <ESPmDNS.h>
+//#include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
 
@@ -21,9 +20,9 @@
 #include "secret.h"
 
 #define DEVICE_NAME "Watering System"
-#define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.3.0"
-#define FIRMWARE_VERSION 23
+//#define MDNS_NAME "garden"
+#define DEVICE_VERSION "0.2.7"
+#define FIRMWARE_VERSION 26
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -46,7 +45,8 @@ AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
 Scheduler<WateringTaskArgs> scheduler(&timeClient);
-SLog logger(&timeClient, BOT_TOKEN, CHAT_ID);
+//SLog logger(&timeClient, BOT_TOKEN, CHAT_ID);
+SLog logger(&timeClient);
 
 
 /**
@@ -140,6 +140,8 @@ void setup() {
         Serial.println("Failed to connect to WiFi");
     }
 
+//    logger.setTeleLogPrefix("🌱 Vườn cây");
+
     ACPower.onPowerOn([]() {
         delay(1000); // wait for power to stabilize
     });
@@ -183,11 +185,16 @@ void setup() {
     WaterLeak.setInactiveStateString("NONE");
     WaterLeak.onChange([](){
         notifyState();
-        logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
     });
-    WaterLeak.onActive([]() {
+    WaterLeak.onHoldState(true, 5000L, []() {
         Valve.close();
+        logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
         logger.log("VALVE_CLOSE", "WATER_LEAK", "");
+        logger.logTele( "🚨 Phát hiện ngập nước");
+    });
+    WaterLeak.onHoldState(false, 5000L, []() {
+        logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
+        logger.logTele("🚰 Nước đã hết ngập");
     });
 
     scheduler.setCallback(WateringTaskExec);
@@ -305,13 +312,15 @@ void setup() {
     ElegantOTA.onEnd([](bool isSuccess) {
         if (isSuccess) {
             logger.log("FIRMWARE_UPDATE", "WEB", String(FIRMWARE_VERSION));
+        } else {
+            logger.log("FIRMWARE_UPDATE_FAILED", "WEB", String(FIRMWARE_VERSION));
         }
     });
 
     /* ===================== */
 
-    MDNS.begin(MDNS_NAME);
-    MDNS.addService("http", "tcp", 80);
+//    MDNS.begin(MDNS_NAME);
+//    MDNS.addService("http", "tcp", 80);
 
     ws.onEvent(WSHandler);
     ElegantOTA.begin(&server);
