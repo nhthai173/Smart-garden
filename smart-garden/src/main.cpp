@@ -8,7 +8,7 @@
  * @copyright Copyright nht (c) 2024
  * 
  * RAM:   [=         ]  14.1% (used 46316 bytes from 327680 bytes)
- * Flash: [=======   ]  68.9% (used 903529 bytes from 1310720 bytes)
+ * Flash: [=======   ]  69.0% (used 904213 bytes from 1310720 bytes)
  * 
  */
 
