@@ -1,3 +1,19 @@
+/**
+ * @file main.cpp
+ * @author Thai Nguyen (nhthai173@gmail.com)
+ * @brief 
+ * @version 1.0
+ * @date 2024-07-16
+ * 
+ * @copyright Copyright nht (c) 2024
+ * 
+ * RAM:   [=         ]  14.3% (used 46776 bytes from 327680 bytes)
+ * Flash: [=======   ]  70.9% (used 929613 bytes from 1310720 bytes)
+ * 
+ */
+
+
+
 #include <Arduino.h>
 #include <WiFi.h>
 
@@ -362,7 +378,7 @@ bool connectWiFi() {
 }
 
 void notifyState() {
-    if (ws.getClients().isEmpty()) return;
+    if (ws.getClients().empty()) return;
     String message = "R1:" + ValvePower.getStateString() + "\n";
     message += "R2:" + ValveDirection.getStateString() + "\n";
     message += "R3:" + PumpPower.getStateString() + "\n";
