@@ -22,8 +22,8 @@
 
 #define DEVICE_NAME "Watering System"
 #define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.2.6"
-#define FIRMWARE_VERSION 22
+#define DEVICE_VERSION "0.3.0"
+#define FIRMWARE_VERSION 23
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -46,7 +46,7 @@ AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
 Scheduler<WateringTaskArgs> scheduler(&timeClient);
-SLog logger(&timeClient);
+SLog logger(&timeClient, BOT_TOKEN, CHAT_ID);
 
 
 /**
@@ -86,7 +86,7 @@ void mainLoop() {
     timeClient.update();
     PowerVoltage.loop();
     scheduler.run();
-    logger.processQueue();
+    logger.loop();
 }
 
 
