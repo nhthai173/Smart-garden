@@ -6,6 +6,19 @@
 #define GENERICINPUT_H
 
 #include <Arduino.h>
+#include <vector>
+
+struct GI_hold_state_cb_t {
+    uint32_t time;
+    std::function<void()> callback;
+    bool executed;
+};
+
+struct GI_hold_state_t {
+    bool state;
+    uint32_t lastTime;
+    std::vector<GI_hold_state_cb_t> callbacks;
+};
 
 class GenericInput {
 
@@ -130,20 +143,53 @@ public:
         _onInactiveCB = std::move(cb);
     }
 
+    void onHoldState(bool state, uint32_t time, std::function<void()> callback) {
+        // Callback list is empty
+        if (_holdStateCBs[state].callbacks.empty()) {
+            _holdStateCBs[state].callbacks.push_back({time, std::move(callback), false});
+            return;
+        }
+
+        // Existing callback for this time
+        for (auto &cb : _holdStateCBs[state].callbacks) {
+            if (cb.time == time) {
+                cb.callback = std::move(callback);
+                return;
+            }
+        }
+
+        // New callback
+        _holdStateCBs[state].callbacks.push_back({time, std::move(callback), false});
+    }
+
+    bool deleteHoldState(bool state, uint32_t time) {
+        for (auto it = _holdStateCBs[state].callbacks.begin(); it != _holdStateCBs[state].callbacks.end(); ++it) {
+            if (it->time == time) {
+                _holdStateCBs[state].callbacks.erase(it);
+                return true;
+            }
+        }
+        return false;
+    }
+
     void loop();
 
 protected:
-    uint8_t _pin;
-    bool _lastState;
-    bool _activeState;
-    bool _lastReadState; // for debounce
-    uint32_t _debounceTime;
+    uint8_t _pin = 0;
+    bool _lastState = false;
+    bool _activeState = false;
+    bool _lastReadState = false; // for debounce
+    uint32_t _debounceTime = 50;
     unsigned long _lastDebounceTime = 0;
     String _activeStateStr = "ACTIVE";
     String _inactiveStateStr = "NONE";
     std::function<void()> _onChangeCB = nullptr;
     std::function<void()> _onActiveCB = nullptr;
     std::function<void()> _onInactiveCB = nullptr;
+    GI_hold_state_t _holdStateCBs[2] = {
+        {false, 0},
+        {true, 0}
+    };
 };
 
 

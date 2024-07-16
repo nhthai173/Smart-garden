@@ -22,6 +22,12 @@ void GenericInput::loop() {
     if (millis() - _lastDebounceTime >= _debounceTime) {
         if (currentState == _lastState) return;
         _lastState = currentState;
+        _holdStateCBs[!currentState].lastTime = 0;
+        _holdStateCBs[currentState].lastTime = millis();
+        for(auto &cb : _holdStateCBs[currentState].callbacks) {
+            cb.executed = false;
+        }
+
         if (currentState == _activeState) {
             if (_onActiveCB != nullptr) {
                 _onActiveCB();
@@ -36,4 +42,15 @@ void GenericInput::loop() {
         }
     }
     _lastReadState = currentState;
+
+    if (_holdStateCBs[currentState].lastTime > 0) {
+        for (auto &cb : _holdStateCBs[currentState].callbacks) {
+            if (millis() - cb.time >= _holdStateCBs[currentState].lastTime) {
+                if (!cb.executed) {
+                    cb.callback();
+                    cb.executed = true;
+                }
+            }
+        }
+    }
 }
