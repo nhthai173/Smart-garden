@@ -1,3 +1,18 @@
+/**
+ * @file main.cpp
+ * @author Thai Nguyen (nhthai173@gmail.com)
+ * @brief 
+ * @version 1.0
+ * @date 2024-07-16
+ * 
+ * @copyright Copyright nht (c) 2024
+ * 
+ * RAM:   [=         ]  14.1% (used 46316 bytes from 327680 bytes)
+ * Flash: [=======   ]  68.9% (used 903529 bytes from 1310720 bytes)
+ * 
+ */
+
+
 #include <Arduino.h>
 #include <WiFi.h>
 
@@ -21,8 +36,8 @@
 
 #define DEVICE_NAME "Watering System"
 //#define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.2.7"
-#define FIRMWARE_VERSION 26
+#define DEVICE_VERSION "0.3.0"
+#define FIRMWARE_VERSION 29
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -224,20 +239,6 @@ void setup() {
         request->send(200, "application/json", message);
     });
 
-//    Add build_flags -DASYNCWEBSERVER_REGEX to enable uri regex
-//    Show file content by go to /file/<path>
-//    server.on("^\\/file\\/(.*)$", HTTP_GET, [](AsyncWebServerRequest *request) {
-//        String filePath = request->pathArg(0);
-//        String ret = "Open file " + filePath + "\n";
-//        File f = SPIFFS.open(filePath.c_str(), "r");
-//        if (!f || !f.size()) {
-//            ret += "File not found or empty";
-//            request->send(404, "text/plain", ret);
-//            return;
-//        }
-//        ret += f.readString();
-//        request->send(200, "text/plain", ret);
-//    });
 
     server.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/plain", "Restarting...");
@@ -362,7 +363,7 @@ bool connectWiFi() {
 }
 
 void notifyState() {
-    if (ws.getClients().isEmpty()) return;
+    if (ws.getClients().empty()) return;
     String message = "R1:" + ValvePower.getStateString() + "\n";
     message += "R2:" + ValveDirection.getStateString() + "\n";
     message += "R3:" + PumpPower.getStateString() + "\n";
