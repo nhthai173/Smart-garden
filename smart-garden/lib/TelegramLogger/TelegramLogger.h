@@ -1,7 +1,7 @@
 #ifndef TELEGRAM_LOGGER_H
 #define TELEGRAM_LOGGER_H
 
-#include "FastBot.h"
+#include "TelegramBotLite.h"
 #include <vector>
 #include "WiFiUdp.h"
 #include "NTPClient.h"
@@ -18,11 +18,11 @@ class TelegramLogger {
 public:
     TelegramLogger() = default;
 
-    explicit TelegramLogger(FastBot *bot, NTPClient *ntpClient = nullptr) {
+    explicit TelegramLogger(TelegramBotLite *bot, NTPClient *ntpClient = nullptr) {
         _bot = bot;
         _ntpClient = ntpClient;
         if (_bot != nullptr) {
-            _bot->setTextMode(FB_MARKDOWN);
+            _bot->setTextMode(0);
         }
         begin();
     }
@@ -91,7 +91,7 @@ public:
     }
 
 protected:
-    FastBot *_bot = nullptr;
+    TelegramBotLite *_bot = nullptr;
     NTPClient *_ntpClient = nullptr;
     std::vector<TL_item> log_queue;
 };

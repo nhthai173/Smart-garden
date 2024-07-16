@@ -45,8 +45,8 @@ AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
 Scheduler<WateringTaskArgs> scheduler(&timeClient);
-//SLog logger(&timeClient, BOT_TOKEN, CHAT_ID);
-SLog logger(&timeClient);
+SLog logger(&timeClient, BOT_TOKEN, CHAT_ID);
+//SLog logger(&timeClient);
 
 
 /**
