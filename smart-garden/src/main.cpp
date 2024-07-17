@@ -17,14 +17,8 @@
 // ayushsharma82/ElegantOTA@^3.1.2
  #define ENABLE_SERVER
 
-
-// mobizt/Firebase Arduino Client Library for ESP8266 and ESP32@^4.4.14
-//#define ENABLE_FIREBASE
-
-
 // mobizt/FirebaseClient@^1.3.5
 #define ENABLE_NFIREBASE
-
 
 // https://github.com/nhthai173//NTPClient.git
  #define ENABLE_NTP
@@ -33,7 +27,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <SimpleTimer.h>
-#include "secret.h"
+#include "secret.h" // see secret_placeholder.h
 
 #if defined(ENABLE_NTP)
 #include <WiFiUdp.h>
@@ -61,13 +55,13 @@
 DefaultNetwork network; // initilize with boolean parameter to enable/disable network reconnection
 UserAuth user_auth(API_KEY, USER_EMAIL, USER_PASSWORD);
 FirebaseApp app;
-WiFiClientSecure ssl_client;
+WiFiClientSecure ssl_client, stream_ssl_client;
 
 void asyncCB(AsyncResult &aResult);
-
 void printResult(AsyncResult &aResult);
 
 AsyncClientClass aClient(ssl_client, getNetwork(network));
+AsyncClientClass streamClient(stream_ssl_client, getNetwork(network));
 
 RealtimeDatabase Database;
 AsyncResult aResult_no_callback;
@@ -90,7 +84,7 @@ String fb_path(const String& path) {
 
 #define DEVICE_NAME "Watering System"
 #define DEVICE_VERSION "0.3.0"
-#define FIRMWARE_VERSION 34
+#define FIRMWARE_VERSION 35
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -468,12 +462,13 @@ void setup() {
 
 #if defined(ENABLE_NFIREBASE)
     ssl_client.setInsecure();
+    stream_ssl_client.setInsecure();
     initializeApp(aClient, app, getAuth(user_auth), asyncCB, "authTask");
     // Binding the FirebaseApp for authentication handler.
     // To unbind, use Database.resetApp();
     app.getApp<RealtimeDatabase>(Database);
     Database.url(DATABASE_URL);
-    Serial.println("Asynchronous Set... ");
+    Database.setSSEFilters("get,put,patch,keep-alive,cancel,auth_revoked");
 #endif // ENABLE_NFIREBASE
 
 
@@ -513,6 +508,9 @@ void loop() {
 
         // Test get
         Database.get(aClient, "/cua_sat", asyncCB, false, "getTask1");
+
+        // Set stream
+        Database.get(streamClient, fb_path("/data"), asyncCB, true /* SSE mode (HTTP Streaming) */, "streamTask");
     }
 
 #endif // ENABLE_NFIREBASE
@@ -610,19 +608,37 @@ void printResult(AsyncResult &aResult) {
     }
 
     if (aResult.available()) {
-        Firebase.printf("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.payload().c_str());
+        auto &RTDB = aResult.to<RealtimeDatabaseResult>();
+        if (RTDB.isStream())
+        {
+            Serial.println("----------------------------");
+            Firebase.printf("task: %s\n", aResult.uid().c_str());
+            Firebase.printf("event: %s\n", RTDB.event().c_str());
+            Firebase.printf("path: %s\n", RTDB.dataPath().c_str());
+            Firebase.printf("data: %s\n", RTDB.to<const char *>());
+            Firebase.printf("type: %d\n", RTDB.type());
 
+            // Stream task handler
 
-        if (aResult.uid() == "getTask1") {
-            JSON::JsonParser parser(aResult.payload());
+        }
+        else
+        {
+            Serial.println("----------------------------");
+            Firebase.printf("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
 
-            uint32_t battery = parser.getInt("battery");
-            bool state = parser.getBool("on");
-            String status = parser.getString("status");
+            // Get task handler
+            // For data type: bool/int/float/double/String -> use: RTDB.to<bool/int/float/double/String>()
+            if (aResult.uid() == "getTask1") {
+                JSON::JsonParser parser(aResult.payload());
 
-            Serial.printf("Battery: %d\n", battery);
-            Serial.printf("State: %s\n", state ? "ON" : "OFF");
-            Serial.printf("Status: %s\n", status.c_str());
+                uint32_t battery = parser.getInt("battery");
+                bool state = parser.getBool("on");
+                String status = parser.getString("status");
+
+                Serial.printf("Battery: %d\n", battery);
+                Serial.printf("State: %s\n", state ? "ON" : "OFF");
+                Serial.printf("Status: %s\n", status.c_str());
+            }
         }
     }
 }
