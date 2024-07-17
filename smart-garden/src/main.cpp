@@ -13,14 +13,27 @@
  *
  */
 
-// #define ENABLE_SERVER
-#define ENABLE_FIREBASE
-// #define ENABLE_NTP
+
+// ayushsharma82/ElegantOTA@^3.1.2
+ #define ENABLE_SERVER
+
+
+// mobizt/Firebase Arduino Client Library for ESP8266 and ESP32@^4.4.14
+//#define ENABLE_FIREBASE
+
+
+// mobizt/FirebaseClient@^1.3.5
+#define ENABLE_NFIREBASE
+
+
+// https://github.com/nhthai173//NTPClient.git
+ #define ENABLE_NTP
 
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <SimpleTimer.h>
+#include "secret.h"
 
 #if defined(ENABLE_NTP)
 #include <WiFiUdp.h>
@@ -28,7 +41,7 @@
 
 #include "WateringSchedule.h"
 #include "SLog.h"
-#endif
+#endif // ENABLE_NTP
 
 #if defined(ENABLE_SERVER)
 
@@ -36,21 +49,44 @@
 #include <ElegantOTA.h>
 #include "MAIN_PAGE.h"
 
-#endif
+#endif // ENABLE_SERVER
 
-#if defined(ENABLE_FIREBASE)
 
-#include "FirebaseIOT.h"
+#if defined(ENABLE_NFIREBASE)
 
-#endif
+#include <FirebaseClient.h>
+#include <WiFiClientSecure.h>
+#include "json_parser.h"
+
+DefaultNetwork network; // initilize with boolean parameter to enable/disable network reconnection
+UserAuth user_auth(API_KEY, USER_EMAIL, USER_PASSWORD);
+FirebaseApp app;
+WiFiClientSecure ssl_client;
+
+void asyncCB(AsyncResult &aResult);
+
+void printResult(AsyncResult &aResult);
+
+AsyncClientClass aClient(ssl_client, getNetwork(network));
+
+RealtimeDatabase Database;
+AsyncResult aResult_no_callback;
+
+bool taskComplete = false;
+
+String DB_DEVICE_PATH = "";
+String fb_path(const String& path) {
+    return DB_DEVICE_PATH + path;
+}
+
+#endif // ENABLE_NFIREBASE
+
 
 #include "GenericOutput.h"
 #include "GenericInput.h"
 #include "VirtualOutput.h"
 #include "VoltageReader.h"
 #include "AutoOff.h"
-
-#include "secret.h"
 
 #define DEVICE_NAME "Watering System"
 #define DEVICE_VERSION "0.3.0"
@@ -96,6 +132,30 @@ AsyncWebSocket ws("/ws");
  * @return false
  */
 bool connectWiFi();
+
+
+String getInfo() {
+    String info = "{";
+    info += R"("device":")" DEVICE_NAME "\",";
+    info += R"("version":")" DEVICE_VERSION "\",";
+    info += R"("firmware":)" + String(FIRMWARE_VERSION) + ",";
+    info += R"("ip":")" + WiFi.localIP().toString() + "\"";
+
+//    info += R"("ip":")" + WiFi.localIP().toString() + "\",";
+//    info += R"("voltage":)" + String(PowerVoltage.get()) + ",";
+//    info += R"("valve":")" + Valve.getStateString() + "\",";
+//    info += R"("r1":")" + ValvePower.getStateString() + "\",";
+//    info += R"("r2":")" + ValveDirection.getStateString() + "\",";
+//    info += R"("r3":")" + PumpPower.getStateString() + "\",";
+//    info += R"("r4":")" + ACPower.getStateString() + "\",";
+//    info += R"("r1_auto_off":)" + String(ValvePower.getDuration()) + ",";
+//    info += R"("r4_auto_off":)" + String(ACPower.getDuration()) + ",";
+//    info += R"("valve":")" + Valve.getStateString() + "\",";
+//    info += R"("valve_auto_off":)" + String(Valve.getDuration()) + ",";
+//    info += R"("water_leak":")" + WaterLeak.getStateString() + "\"";
+    info += "}";
+    return info;
+}
 
 
 /**
@@ -160,55 +220,12 @@ WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType type, v
 #endif
 
 
-#if defined(ENABLE_FIREBASE)
-
-/**
- * @brief Firebase stream callback
- * @param data
- */
-void streamCallback(FirebaseStream data) {
-    Serial.printf("sream path, %s\nevent path, %s\ndata type, %s\nevent type, %s\n\n",
-                  data.streamPath().c_str(),
-                  data.dataPath().c_str(),
-                  data.dataType().c_str(),
-                  data.eventType().c_str());
-
-//    if (data.dataPath() == "/") {
-//        FirebaseJsonData jdata;
-//        data.jsonObjectPtr()->get(jdata, "R1");
-//        if (jdata.success) {
-//            R1.setState(jdata.boolValue);
-//        }
-//        data.jsonObjectPtr()->get(jdata, "R2");
-//        if (jdata.success) {
-//            R2.setState(jdata.boolValue);
-//        }
-//        data.jsonObjectPtr()->get(jdata, "R3");
-//        if (jdata.success) {
-//            R3.setState(jdata.boolValue);
-//        }
-//    } else if (data.dataPath() == "/R1") {
-//        R1.setState(data.boolData());
-//    } else if (data.dataPath() == "/R2") {
-//        R2.setState(data.boolData());
-//    } else if (data.dataPath() == "/R3") {
-//        R3.setState(data.boolData());
-//    }
-
-    printResult(data); // see addons/RTDBHelper.h
-    Serial.println();
-    Serial.printf("Received stream payload size: %d (Max. %d)\n\n", data.payloadLength(), data.maxPayloadLength());
-}
-
-#endif
-
-
 void mainLoop() {
-    // ValvePower.loop();
-    // ACPower.loop();
-    // Valve.loop();
-    // PumpPower.loop();
-    // PowerVoltage.loop();
+    ValvePower.loop();
+    ACPower.loop();
+    Valve.loop();
+    PumpPower.loop();
+    PowerVoltage.loop();
 #if defined(ENABLE_NTP)
     timeClient.update();
     scheduler.run();
@@ -274,6 +291,7 @@ void setup() {
 
     timer.setInterval(1000L, []() {
         led.toggle();
+        Serial.print(".");
     });
 
     ACPower.onPowerOn([]() {
@@ -347,24 +365,7 @@ void setup() {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) { request->send(200, "text/html", MAINPAGE); });
 
     server.on("/info", HTTP_ANY, [](AsyncWebServerRequest *request) {
-        String message = "{";
-        message += R"("device":")" DEVICE_NAME "\",";
-        message += R"("version":")" DEVICE_VERSION "\",";
-        message += R"("firmware":)" + String(FIRMWARE_VERSION) + ",";
-        message += R"("ip":")" + WiFi.localIP().toString() + "\",";
-        message += R"("voltage":)" + String(PowerVoltage.get()) + ",";
-        message += R"("valve":")" + Valve.getStateString() + "\",";
-        message += R"("r1":")" + ValvePower.getStateString() + "\",";
-        message += R"("r2":")" + ValveDirection.getStateString() + "\",";
-        message += R"("r3":")" + PumpPower.getStateString() + "\",";
-        message += R"("r4":")" + ACPower.getStateString() + "\",";
-        message += R"("r1_auto_off":)" + String(ValvePower.getDuration()) + ",";
-        message += R"("r4_auto_off":)" + String(ACPower.getDuration()) + ",";
-        message += R"("valve":")" + Valve.getStateString() + "\",";
-        message += R"("valve_auto_off":)" + String(Valve.getDuration()) + ",";
-        message += R"("water_leak":")" + WaterLeak.getStateString() + "\"";
-        message += "}";
-        request->send(200, "application/json", message);
+        request->send(200, "application/json", getInfo());
     });
 
 
@@ -464,70 +465,17 @@ void setup() {
 
     timer.setInterval(500L, mainLoop);
 
-#if defined(ENABLE_FIREBASE)
-    // Firebase setup
-    fb_onFirstConnect([]() {
-        D_Print("Set name\n");
-        if (Firebase.RTDB.setInt(&fbdo, DB_DEVICE_PATH + "/name", rand())) {
-            D_Print("Set name success\n");
-        } else {
-            D_Print("Set name failed\n");
-            D_Print("Error: %s\n", fbdo.errorReason().c_str());
-        }
 
-        FirebaseJson json;
-        json.add("name", DEVICE_NAME);
-        json.add("firmware", FIRMWARE_VERSION);
-        json.add("version", DEVICE_VERSION);
-        json.add("ip", WiFi.localIP().toString());
-        D_Print("-> Update device info\n");
-        if (Firebase.RTDB.set(&fbdo, DB_DEVICE_PATH + "/info", &json)) {
-            D_Print("Update info success\n");
-        } else {
-            D_Print("Update info failed\n");
-            D_Print("Error: %s\n", fbdo.errorReason().c_str());
-        }
+#if defined(ENABLE_NFIREBASE)
+    ssl_client.setInsecure();
+    initializeApp(aClient, app, getAuth(user_auth), asyncCB, "authTask");
+    // Binding the FirebaseApp for authentication handler.
+    // To unbind, use Database.resetApp();
+    app.getApp<RealtimeDatabase>(Database);
+    Database.url(DATABASE_URL);
+    Serial.println("Asynchronous Set... ");
+#endif // ENABLE_NFIREBASE
 
-       if (Firebase.RTDB.getJSON(&fbdo, DB_DEVICE_PATH + "/data")) {
-           FirebaseJsonData data = fbdo.jsonData();
-           D_Print("Get /data: %s", data.stringValue.c_str());
-           D_Print("Type: %s", data.type.c_str());
-
-           // Device first time connect
-           // @TODO implement FireBaseDevice class
-           if (data.type ==  "null") {
-               D_Print("Not found /data, set default state\n");
-               FirebaseJson jsonData;
-               jsonData.add("valve", Valve.getState());
-               jsonData.add("r1", ValvePower.getState());
-               jsonData.add("r2", ValveDirection.getState());
-               jsonData.add("r3", PumpPower.getState());
-               jsonData.add("r4", ACPower.getState());
-               jsonData.add("s1", WaterLeak.getStateString());
-               if (Firebase.RTDB.set(&fbdo, DB_DEVICE_PATH + "/data", &jsonData)) {
-                   D_Print("Set default state success\n");
-               } else {
-                   D_Print("Set default state failed\n");
-                   D_Print("Error: %s\n", fbdo.errorReason().c_str());
-               }
-               return;
-           }
-
-           // Sync state
-           // @TODO implement last state mode on GeneralOutput and server
-       } else {
-           D_Print("Failed to get /data\n");
-           D_Print("Error: %s\n", fbdo.errorReason().c_str());
-       }
-
-    });
-
-    fb_setup(USER_EMAIL,
-             USER_PASSWORD,
-             API_KEY,
-             DATABASE_URL);
-    fb_setStreamCallback(streamCallback);
-#endif // ENABLE_FIREBASE
 
 } // setup
 
@@ -536,7 +484,7 @@ void setup() {
 
 
 void loop() {
-    // WaterLeak.loop();
+    WaterLeak.loop();
     timer.run();
 #if defined(ENABLE_SERVER)
     ws.cleanupClients();
@@ -545,6 +493,29 @@ void loop() {
 #if defined(ENABLE_FIREBASE)
     fb_loop();
 #endif
+
+#if defined(ENABLE_NFIREBASE)
+    app.loop();
+    Database.loop();
+
+    if (app.ready() && !taskComplete) {
+        taskComplete = true;
+
+        Serial.println("> Connected Firebase");
+
+        // Set Device Path
+        DB_DEVICE_PATH = app.getUid() + "/" + (String)ESP.getEfuseMac();
+
+        // Set info
+        Serial.println("> Set info");
+        Serial.println(getInfo());
+        Database.update<object_t>(aClient, fb_path("/info"), (object_t)getInfo(), asyncCB, "setInfoTask");
+
+        // Test get
+        Database.get(aClient, "/cua_sat", asyncCB, false, "getTask1");
+    }
+
+#endif // ENABLE_NFIREBASE
 }
 
 bool connectWiFi() {
@@ -579,7 +550,9 @@ void notifyState() {
 }
 
 #else
+
 void notifyState() {}
+
 #endif
 
 
@@ -610,3 +583,48 @@ void WateringTaskExec(schedule_task_t<WateringTaskArgs> task) {
     logger.log("VALVE_OPEN", "SCHEDULE", task.args->toString());
 }
 #endif // ENABLE_NTP
+
+
+#if defined(ENABLE_NFIREBASE)
+
+void asyncCB(AsyncResult &aResult) {
+    // WARNING!
+    // Do not put your codes inside the callback and printResult.
+
+    printResult(aResult);
+}
+
+void printResult(AsyncResult &aResult) {
+    if (aResult.isEvent()) {
+        Firebase.printf("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
+                        aResult.appEvent().message().c_str(), aResult.appEvent().code());
+    }
+
+    if (aResult.isDebug()) {
+        Firebase.printf("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
+    }
+
+    if (aResult.isError()) {
+        Firebase.printf("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.error().message().c_str(),
+                        aResult.error().code());
+    }
+
+    if (aResult.available()) {
+        Firebase.printf("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.payload().c_str());
+
+
+        if (aResult.uid() == "getTask1") {
+            JSON::JsonParser parser(aResult.payload());
+
+            uint32_t battery = parser.getInt("battery");
+            bool state = parser.getBool("on");
+            String status = parser.getString("status");
+
+            Serial.printf("Battery: %d\n", battery);
+            Serial.printf("State: %s\n", state ? "ON" : "OFF");
+            Serial.printf("Status: %s\n", status.c_str());
+        }
+    }
+}
+
+#endif // ENABLE_NFIREBASE
