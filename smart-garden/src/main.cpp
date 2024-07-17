@@ -47,32 +47,7 @@
 
 
 #if defined(ENABLE_NFIREBASE)
-
-#include <FirebaseClient.h>
-#include <WiFiClientSecure.h>
-#include "json_parser.h"
-
-DefaultNetwork network; // initilize with boolean parameter to enable/disable network reconnection
-UserAuth user_auth(API_KEY, USER_EMAIL, USER_PASSWORD);
-FirebaseApp app;
-WiFiClientSecure ssl_client, stream_ssl_client;
-
-void asyncCB(AsyncResult &aResult);
-void printResult(AsyncResult &aResult);
-
-AsyncClientClass aClient(ssl_client, getNetwork(network));
-AsyncClientClass streamClient(stream_ssl_client, getNetwork(network));
-
-RealtimeDatabase Database;
-AsyncResult aResult_no_callback;
-
-bool taskComplete = false;
-
-String DB_DEVICE_PATH = "";
-String fb_path(const String& path) {
-    return DB_DEVICE_PATH + path;
-}
-
+#include "FirebaseIOT.h"
 #endif // ENABLE_NFIREBASE
 
 
@@ -84,7 +59,7 @@ String fb_path(const String& path) {
 
 #define DEVICE_NAME "Watering System"
 #define DEVICE_VERSION "0.3.0"
-#define FIRMWARE_VERSION 35
+#define FIRMWARE_VERSION 39
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -461,14 +436,56 @@ void setup() {
 
 
 #if defined(ENABLE_NFIREBASE)
-    ssl_client.setInsecure();
-    stream_ssl_client.setInsecure();
-    initializeApp(aClient, app, getAuth(user_auth), asyncCB, "authTask");
-    // Binding the FirebaseApp for authentication handler.
-    // To unbind, use Database.resetApp();
-    app.getApp<RealtimeDatabase>(Database);
-    Database.url(DATABASE_URL);
-    Database.setSSEFilters("get,put,patch,keep-alive,cancel,auth_revoked");
+    fb_begin(API_KEY, DATABASE_URL, USER_EMAIL, USER_PASSWORD);
+    onFBFirstConnected([](){
+        // Set info
+        Serial.println(getInfo());
+        database_update("/info", getInfo());
+
+        // Set stream
+        database_stream("/data", [](AsyncResult &res){
+            auto &RTDB = res.to<RealtimeDatabaseResult>();
+            // First time connect -> intit data
+            if (RTDB.event() == "put" && RTDB.dataPath() == "/" && RTDB.type() == realtime_database_data_type_null) {
+                JsonWriter writer;
+                object_t o1, o2, o3, o4, o5, o6, json;
+                writer.create(o1, "valve", Valve.getState());
+                writer.create(o2, "r1", ValvePower.getState());
+                writer.create(o3, "r2", ValveDirection.getState());
+                writer.create(o4, "r3", PumpPower.getState());
+                writer.create(o5, "r4", ACPower.getState());
+                writer.create(o6, "water_leak", WaterLeak.getState());
+                writer.join(json, 6, o1, o2, o3, o4, o5, o6);
+                database_set("/data", json);
+            } else if (RTDB.dataPath() == "/" && RTDB.type() == realtime_database_data_type_json) {
+                JSON::JsonParser parser(RTDB.to<String>());
+                Valve.setState(parser.getBool("valve"));
+                ValvePower.setState(parser.getBool("r1"));
+                ValveDirection.setState(parser.getBool("r2"));
+                PumpPower.setState(parser.getBool("r3"));
+                ACPower.setState(parser.getBool("r4"));
+                notifyState();
+
+                if (parser.getBool("water_leak") != WaterLeak.getState()) {
+                    database_set("/data/water_leak", WaterLeak.getState());
+                }
+            } else if (RTDB.dataPath() == "/r1") {
+                ValvePower.setState(RTDB.to<bool>());
+            } else if (RTDB.dataPath() == "/r2") {
+                ValveDirection.setState(RTDB.to<bool>());
+            } else if (RTDB.dataPath() == "/r3") {
+                PumpPower.setState(RTDB.to<bool>());
+            } else if (RTDB.dataPath() == "/r4") {
+                ACPower.setState(RTDB.to<bool>());
+            } else if (RTDB.dataPath() == "/valve") {
+                Valve.setState(RTDB.to<bool>());
+            } else if (RTDB.dataPath() == "/water_leak" && RTDB.to<bool>() != WaterLeak.getState()) {
+                database_set("/data/water_leak", WaterLeak.getState());
+            }
+
+            notifyState();
+        });
+    });
 #endif // ENABLE_NFIREBASE
 
 
@@ -490,29 +507,7 @@ void loop() {
 #endif
 
 #if defined(ENABLE_NFIREBASE)
-    app.loop();
-    Database.loop();
-
-    if (app.ready() && !taskComplete) {
-        taskComplete = true;
-
-        Serial.println("> Connected Firebase");
-
-        // Set Device Path
-        DB_DEVICE_PATH = app.getUid() + "/" + (String)ESP.getEfuseMac();
-
-        // Set info
-        Serial.println("> Set info");
-        Serial.println(getInfo());
-        Database.update<object_t>(aClient, fb_path("/info"), (object_t)getInfo(), asyncCB, "setInfoTask");
-
-        // Test get
-        Database.get(aClient, "/cua_sat", asyncCB, false, "getTask1");
-
-        // Set stream
-        Database.get(streamClient, fb_path("/data"), asyncCB, true /* SSE mode (HTTP Streaming) */, "streamTask");
-    }
-
+    fb_loop();
 #endif // ENABLE_NFIREBASE
 }
 
@@ -590,57 +585,6 @@ void asyncCB(AsyncResult &aResult) {
     // Do not put your codes inside the callback and printResult.
 
     printResult(aResult);
-}
-
-void printResult(AsyncResult &aResult) {
-    if (aResult.isEvent()) {
-        Firebase.printf("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
-                        aResult.appEvent().message().c_str(), aResult.appEvent().code());
-    }
-
-    if (aResult.isDebug()) {
-        Firebase.printf("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
-    }
-
-    if (aResult.isError()) {
-        Firebase.printf("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.error().message().c_str(),
-                        aResult.error().code());
-    }
-
-    if (aResult.available()) {
-        auto &RTDB = aResult.to<RealtimeDatabaseResult>();
-        if (RTDB.isStream())
-        {
-            Serial.println("----------------------------");
-            Firebase.printf("task: %s\n", aResult.uid().c_str());
-            Firebase.printf("event: %s\n", RTDB.event().c_str());
-            Firebase.printf("path: %s\n", RTDB.dataPath().c_str());
-            Firebase.printf("data: %s\n", RTDB.to<const char *>());
-            Firebase.printf("type: %d\n", RTDB.type());
-
-            // Stream task handler
-
-        }
-        else
-        {
-            Serial.println("----------------------------");
-            Firebase.printf("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
-
-            // Get task handler
-            // For data type: bool/int/float/double/String -> use: RTDB.to<bool/int/float/double/String>()
-            if (aResult.uid() == "getTask1") {
-                JSON::JsonParser parser(aResult.payload());
-
-                uint32_t battery = parser.getInt("battery");
-                bool state = parser.getBool("on");
-                String status = parser.getString("status");
-
-                Serial.printf("Battery: %d\n", battery);
-                Serial.printf("State: %s\n", state ? "ON" : "OFF");
-                Serial.printf("Status: %s\n", status.c_str());
-            }
-        }
-    }
 }
 
 #endif // ENABLE_NFIREBASE
