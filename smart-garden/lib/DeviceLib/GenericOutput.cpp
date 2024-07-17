@@ -40,6 +40,14 @@ void GenericOutput::toggle() {
     }
 }
 
+void GenericOutput::setState(bool state) {
+    if (state) {
+        on();
+    } else {
+        off();
+    }
+}
+
 void GenericOutput::setState(const String& state) {
     if (state.startsWith("ON")) {
         on();
