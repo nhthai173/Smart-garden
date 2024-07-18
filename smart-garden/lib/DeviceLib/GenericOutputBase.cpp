@@ -12,7 +12,7 @@ stdGenericOutput::GenericOutputBase::GenericOutputBase(uint8_t pin, bool activeS
     digitalWrite(_pin, !_activeState);
 }
 
-#if defined(USE_PCF8574)
+#ifdef USE_PCF8574
 stdGenericOutput::GenericOutputBase::GenericOutputBase(PCF8574& pcf8574, uint8_t pin, bool activeState) {
     _pin = pin;
     _activeState = activeState;
@@ -27,6 +27,12 @@ stdGenericOutput::GenericOutputBase::~GenericOutputBase() {
     _onPowerChanged = nullptr;
     _onPowerOff = nullptr;
     _onPowerOn = nullptr;
+
+#if defined(USE_FIREBASE_RTDB)
+    _databaseConfig = nullptr;
+    _fbCallback = nullptr;
+#endif
+
 }
 
 void stdGenericOutput::GenericOutputBase::_write() {
@@ -51,6 +57,11 @@ void stdGenericOutput::GenericOutputBase::on() {
     if (_onPowerChanged != nullptr) {
         _onPowerChanged();
     }
+#if defined(USE_FIREBASE_RTDB)
+    if (_rtdbPath.length() > 0) {
+        _setRTDBState();
+    }
+#endif
 }
 
 void stdGenericOutput::GenericOutputBase::off() {
@@ -63,6 +74,11 @@ void stdGenericOutput::GenericOutputBase::off() {
     if (_onPowerChanged != nullptr) {
         _onPowerChanged();
     }
+#if defined(USE_FIREBASE_RTDB)
+    if (_rtdbPath.length() > 0) {
+        _setRTDBState();
+    }
+#endif
 }
 
 void stdGenericOutput::GenericOutputBase::toggle() {
@@ -93,6 +109,10 @@ void stdGenericOutput::GenericOutputBase::setActiveState(bool activeState) {
     _activeState = activeState;
 }
 
+void stdGenericOutput::GenericOutputBase::setStartUpState(startup_state_t startUpState) {
+    _startUpState = startUpState;
+}
+
 bool stdGenericOutput::GenericOutputBase::getActiveState() const {
     return _activeState;
 }
@@ -103,4 +123,8 @@ bool stdGenericOutput::GenericOutputBase::getState() const {
 
 String stdGenericOutput::GenericOutputBase::getStateString() const {
     return _state ? "ON" : "OFF";
+}
+
+stdGenericOutput::startup_state_t stdGenericOutput::GenericOutputBase::getStartUpState() const {
+    return _startUpState;
 }

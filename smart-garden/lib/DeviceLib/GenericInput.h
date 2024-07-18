@@ -34,6 +34,11 @@ public:
     explicit GenericInput(uint8_t pin, uint8_t mode = INPUT, bool activeState = LOW, uint32_t debounceTime = 50);
 
     /**
+     * @brief Destroy the GenericInput object
+     */
+    ~GenericInput();
+
+    /**
      * @brief Set the pin number
      * @param pin
      */
@@ -172,6 +177,9 @@ public:
         return false;
     }
 
+    /**
+     * @brief Loop function to be called in the main loop
+     */
     void loop();
 
 protected:

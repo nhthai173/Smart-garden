@@ -5,7 +5,6 @@
 #include "VirtualOutput.h"
 
 void VirtualOutput::on() {
-    if (_state) return;
     if (_pOnDelay > 0 && _pState != stdGenericOutput::ON)
     {
         _previousMillis = millis();
@@ -13,6 +12,8 @@ void VirtualOutput::on() {
         return;
     }
     _pState = stdGenericOutput::ON;
+
+    if (_state) return;
     _state = true;
     _previousMillis = millis();
     if (_onFunction != nullptr) {
@@ -25,12 +26,15 @@ void VirtualOutput::on() {
     if (_onPowerChanged != nullptr) {
         _onPowerChanged();
     }
+#ifdef USE_FIREBASE_RTDB
+    _setRTDBState();
+#endif
 }
 
 void VirtualOutput::off() {
+    _pState = stdGenericOutput::OFF;
     if (!_state) return;
     _state = false;
-    _pState = stdGenericOutput::OFF;
     if (_offFunction != nullptr) {
         _offFunction();
     }
@@ -41,4 +45,7 @@ void VirtualOutput::off() {
     if (_onPowerChanged != nullptr) {
         _onPowerChanged();
     }
+#ifdef USE_FIREBASE_RTDB
+    _setRTDBState();
+#endif
 }

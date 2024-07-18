@@ -2,6 +2,7 @@
 #define GENERIC_OUTPUT_H
 
 #include "GenericOutputBase.h"
+#include <vector>
 
 namespace stdGenericOutput {
 
@@ -17,7 +18,6 @@ namespace stdGenericOutput {
 class stdGenericOutput::GenericOutput: public stdGenericOutput::GenericOutputBase
 {
 public:
-
     GenericOutput() = default;
 
 
@@ -53,6 +53,10 @@ public:
     }
 
 #endif
+
+    ~GenericOutput() {
+        _onAutoOff = nullptr;
+    }
 
     /**
      * @brief set power on

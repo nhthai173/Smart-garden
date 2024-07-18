@@ -3,7 +3,6 @@
 namespace stdGenericOutput {
     void GenericOutput::on()
     {
-        if (_state) return;
         if (_pOnDelay > 0 && _pState != ON)
         {
             _previousMillis = millis();
@@ -12,6 +11,7 @@ namespace stdGenericOutput {
         }
         _pState = ON;
         _previousMillis = millis();
+        if (_state) return;
         GenericOutputBase::on();
     }
 
@@ -27,8 +27,8 @@ namespace stdGenericOutput {
 
     void GenericOutput::off()
     {
-        if (!_state) return;
         _pState = OFF;
+        if (!_state) return;
         GenericOutputBase::off();
     }
 

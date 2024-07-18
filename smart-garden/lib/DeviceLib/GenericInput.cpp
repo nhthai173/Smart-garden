@@ -14,6 +14,12 @@ GenericInput::GenericInput(uint8_t pin, uint8_t mode, bool activeState, uint32_t
     _debounceTime = debounceTime;
 }
 
+GenericInput::~GenericInput() {
+    _onChangeCB = nullptr;
+    _onActiveCB = nullptr;
+    _onInactiveCB = nullptr;
+}
+
 void GenericInput::loop() {
     bool currentState = digitalRead(_pin);
     if (currentState != _lastReadState) {

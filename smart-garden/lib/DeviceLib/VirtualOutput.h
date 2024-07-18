@@ -25,12 +25,14 @@ public:
 
     /**
      * @brief Construct a new Virtual Output object with auto off feature and duration
-     * @param autoOffEnabled enable auto off feature
      * @param duration duration to turn off after power is on in milliseconds
      */
-    VirtualOutput(bool autoOffEnabled, unsigned long duration) : GenericOutput() {
-        _autoOffEnabled = autoOffEnabled;
+    VirtualOutput(unsigned long duration) : GenericOutput() {
+        _autoOffEnabled = false;
         _duration = duration;
+        if (duration > 0) {
+            _autoOffEnabled = true;
+        }
     }
 
     /**
