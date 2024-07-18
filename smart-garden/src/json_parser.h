@@ -7,7 +7,7 @@
 
 #define JSON_PARSER_VERSION "1.0.0"
 
-//#define USE_ARRAY
+#define USE_ARRAY
 #define USE_JSON_PARSER_CLASS
 
 #include <Arduino.h>
@@ -127,9 +127,11 @@ String JSON::getProperty(const String &body, const String &key) {
 #ifdef USE_ARRAY
 
 String JSON::getItem(const String &arrayString, unsigned int index) {
-    if (arrayString[0] != '[') {
+    if (arrayString[0] != '[' || arrayString[arrayString.length() - 1] != ']') {
         return ""; // invalid Array
     }
+
+    Serial.printf("> Start get item [%d]\n", index);
 
     int8_t _depth = 0;
     const char *str = arrayString.c_str();
@@ -153,41 +155,52 @@ String JSON::getItem(const String &arrayString, unsigned int index) {
             JSON::index_t res{};
             res.depth = _depth;
             res.index = str - arrayString.c_str();
-            res.str = -1;
+            res.str = 1;
             indexes.push_back(res);
         }
         str++;
     }
 
-    unsigned int prevIndex = 0;
+    unsigned int start_index = 0;
+    unsigned int end_index = 0;
+
     for (auto &i : indexes) {
-        if (i.str == -1 && i.depth == 1) {
+        if (i.str == 1 && i.depth == 1) {
             if (index == 0) {
-                if (prevIndex == 0) {
-                    prevIndex = 1;
-                }
-                String output = arrayString.substring(prevIndex, i.index);
-                output.trim();
-                if (output[0] == '{' || output[0] == '[') {
-                    char endStr = output[0] == '{' ? '}' : ']';
-                    for (auto &j : indexes) {
-                        if (j.str == endStr && j.depth == i.depth + 1 && j.index > i.index) {
-                            int end_index = j.index;
-                            return arrayString.substring(i.index, end_index + 1);
-                        }
-                    }
-                    return ""; // invalid JSON
-                } else if (output[0] == '\"' && output[output.length() - 1] == '\"') {
-                    output = output.substring(1, output.length() - 1);
-                }
-                return output;
+                end_index = i.index;
+                break;
             }
-            prevIndex = i.index + 1;
+            start_index = i.index + 1;
             --index;
         }
     }
 
-    return ""; // not found
+    if (index != 0) {
+        Serial.printf("> Index not found [%d]\n", index);
+        return ""; // not found
+    }
+
+    if (start_index == 0) {
+        start_index = 1;
+    }
+    if (end_index == 0) {
+        end_index = arrayString.length() - 1;
+    }
+
+    String output = arrayString.substring(start_index, end_index);
+    output.trim();
+    if (output[0] == '{' || output[0] == '[') {
+        char endStr = output[0] == '{' ? '}' : ']';
+        for (auto &j : indexes) {
+            if (j.str == endStr && j.depth == 2 && j.index > end_index) {
+                return arrayString.substring(start_index, j.index + 1);
+            }
+        }
+        return ""; // invalid JSON/Array
+    } else if (output[0] == '\"' && output[output.length() - 1] == '\"') {
+        output = output.substring(1, output.length() - 1);
+    }
+    return output;
 }
 
 #endif // USE_ARRAY
@@ -260,6 +273,11 @@ public:
     JsonParser *getArray(const String &property, unsigned int index) {
         return getObject(property, index);
     }
+
+    String getItem(unsigned int index) {
+        return JSON::getItem(_buf, index);
+    }
+
 #endif // USE_ARRAY
 
 }; // class JsonParser
