@@ -6,13 +6,13 @@
 
 void VirtualOutput::on() {
     if (_state) return;
-    if (_pOnDelay > 0 && _pState != ON)
+    if (_pOnDelay > 0 && _pState != stdGenericOutput::ON)
     {
         _previousMillis = millis();
-        _pState = WAIT_FOR_ON;
+        _pState = stdGenericOutput::WAIT_FOR_ON;
         return;
     }
-    _pState = ON;
+    _pState = stdGenericOutput::ON;
     _state = true;
     _previousMillis = millis();
     if (_onFunction != nullptr) {
@@ -30,7 +30,7 @@ void VirtualOutput::on() {
 void VirtualOutput::off() {
     if (!_state) return;
     _state = false;
-    _pState = OFF;
+    _pState = stdGenericOutput::OFF;
     if (_offFunction != nullptr) {
         _offFunction();
     }

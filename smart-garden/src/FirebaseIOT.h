@@ -69,17 +69,17 @@ void fb_begin(const String &api, const String &db_url, const String &email, cons
 
 template<typename T = object_t>
 void database_set(const String &path, const T &value) {
-    Database.update<T>(aClient, DB_DEVICE_PATH + path, value);
+    Database.set<T>(aClient, DB_DEVICE_PATH + path, value, aResult_no_callback);
 }
 
 template<typename T = object_t>
 void database_set(const String &path, const T &value, AsyncResultCallback callback) {
-    Database.update<T>(aClient, DB_DEVICE_PATH + path, value, callback);
+    Database.set<T>(aClient, DB_DEVICE_PATH + path, value, callback);
 }
 
 template<typename T = object_t>
 void database_update(const String &path, const T &value) {
-    Database.update<T>(aClient, DB_DEVICE_PATH + path, value);
+    Database.update<T>(aClient, DB_DEVICE_PATH + path, value, aResult_no_callback);
 }
 
 template<typename T = object_t>

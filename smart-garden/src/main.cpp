@@ -55,21 +55,20 @@
 #include "GenericInput.h"
 #include "VirtualOutput.h"
 #include "VoltageReader.h"
-#include "AutoOff.h"
 
 #define DEVICE_NAME "Watering System"
 #define DEVICE_VERSION "0.3.0"
-#define FIRMWARE_VERSION 39
+#define FIRMWARE_VERSION 40
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
 
 #define OUTPUT_ACTIVE_STATE LOW
 
-AutoOff ValvePower(19, OUTPUT_ACTIVE_STATE, 8000L /* 8 sec */); // R1
+GenericOutput ValvePower(19, OUTPUT_ACTIVE_STATE, 8000L /* 8 sec */); // R1
 GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
-AutoOff PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
-AutoOff ACPower(4, OUTPUT_ACTIVE_STATE, 180000L /* 3 min */); // R4
+GenericOutput PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
+GenericOutput ACPower(4, OUTPUT_ACTIVE_STATE, 180000L /* 3 min */); // R4
 VirtualOutput Valve(true, 60000L /* 1 min */);
 GenericInput WaterLeak(34, INPUT_PULLUP, LOW);
 VoltageReader PowerVoltage(32, 10.0, 3.33, 0.3, 10.5, 13.5);
@@ -436,14 +435,17 @@ void setup() {
 
 
 #if defined(ENABLE_NFIREBASE)
+    timer.setInterval(250L, fb_loop);
+
     fb_begin(API_KEY, DATABASE_URL, USER_EMAIL, USER_PASSWORD);
     onFBFirstConnected([](){
         // Set info
-        Serial.println(getInfo());
-        database_update("/info", getInfo());
+        database_update("/info", (object_t)getInfo());
 
         // Set stream
         database_stream("/data", [](AsyncResult &res){
+            printResult(res);
+
             auto &RTDB = res.to<RealtimeDatabaseResult>();
             // First time connect -> intit data
             if (RTDB.event() == "put" && RTDB.dataPath() == "/" && RTDB.type() == realtime_database_data_type_null) {
@@ -502,13 +504,6 @@ void loop() {
     ws.cleanupClients();
     ElegantOTA.loop();
 #endif
-#if defined(ENABLE_FIREBASE)
-    fb_loop();
-#endif
-
-#if defined(ENABLE_NFIREBASE)
-    fb_loop();
-#endif // ENABLE_NFIREBASE
 }
 
 bool connectWiFi() {

@@ -5,11 +5,11 @@
 #ifndef VIRTUALOUTPUT_H
 #define VIRTUALOUTPUT_H
 
-#include "AutoOff.h"
+#include "GenericOutput.h"
 
-class VirtualOutput : public AutoOff {
+class VirtualOutput : public GenericOutput {
 public:
-    VirtualOutput() : AutoOff() { }
+    VirtualOutput() : GenericOutput() { }
 
     /**
      * @brief Construct a new Virtual Output object
@@ -17,7 +17,7 @@ public:
      * @param offFunction function to execute when power is off
      * @param autoOffEnabled enable auto off feature
      */
-    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction, bool autoOffEnabled = false) : AutoOff() {
+    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction, bool autoOffEnabled = false) : GenericOutput() {
         _onFunction = std::move(onFunction);
         _offFunction = std::move(offFunction);
         _autoOffEnabled = autoOffEnabled;
@@ -28,7 +28,7 @@ public:
      * @param autoOffEnabled enable auto off feature
      * @param duration duration to turn off after power is on in milliseconds
      */
-    VirtualOutput(bool autoOffEnabled, unsigned long duration) : AutoOff() {
+    VirtualOutput(bool autoOffEnabled, unsigned long duration) : GenericOutput() {
         _autoOffEnabled = autoOffEnabled;
         _duration = duration;
     }
@@ -58,8 +58,8 @@ public:
      * @brief set power on for a duration. Only works once
      * @param duration
      */
-    void open(unsigned long duration) {
-        AutoOff::on(duration);
+    void open(uint32_t duration) {
+        GenericOutput::on(duration);
     }
 
     /**
@@ -67,7 +67,7 @@ public:
      * @param percentage 1-100
      */
     void openPercentage(uint8_t percentage) {
-        AutoOff::onPercentage(percentage);
+        GenericOutput::onPercentage(percentage);
     }
 
     /**
