@@ -24,7 +24,10 @@
 #define ENABLE_NTP
 
 //#define USE_LOGGER
+
 #define USE_SCHEDULER
+
+#define USE_WEB_INTERFACE
 
 #if defined(ENABLE_NTP)
 #if defined(USE_LOGGER)
@@ -35,10 +38,15 @@
 #endif
 #endif
 
+#if defined(ENABLE_SERVER) && defined(USE_WEB_INTERFACE)
+#define ENABLE_WEB_INTERFACE
+#endif
 
+
+#include "version.h"
 #define DEVICE_NAME "Watering System"
-#define DEVICE_VERSION "0.3.0"
-#define FIRMWARE_VERSION 45
+// #define DEVICE_VERSION "0.3.0"
+// #define FIRMWARE_VERSION 46
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -67,7 +75,12 @@
 
 #include <ESPAsyncWebServer.h>
 #include <ElegantOTA.h>
+
+#if defined(ENABLE_WEB_INTERFACE)
+
 #include "MAIN_PAGE.h"
+
+#endif
 
 #endif // ENABLE_SERVER
 
@@ -218,8 +231,16 @@ WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType type, v
     }
 }
 
-#endif
 
+void responseSuccess(AsyncWebServerRequest *request, const String &message) {
+    request->send(200, "text/plain", message);
+}
+
+void responseError(AsyncWebServerRequest *request, const String &message) {
+    request->send(400, "text/plain", message);
+}
+
+#endif
 
 
 #if defined(ENABLE_NFIREBASE)
@@ -240,7 +261,6 @@ void syncRTDB() {
 #endif
 
 
-
 void mainLoop() {
     ValvePower.loop();
     ACPower.loop();
@@ -259,35 +279,7 @@ void mainLoop() {
 }
 
 
-
 #if defined(ENABLE_SCHEDULER)
-/**
- * Set a test schedule
- * @return
- */
-bool setTestSchedule(uint8_t id, uint8_t hour, uint8_t min) {
-    if (scheduler.getTaskById(id).id) return "Schedule already set";
-    schedule_task_t<WateringTaskArgs> task = {
-            .id = id,
-            .time = {
-                    .hour = hour,
-                    .minute = min
-            },
-            .repeat = {
-                    .monday = true,
-                    .tuesday = true,
-                    .wednesday = true,
-                    .thursday = true,
-                    .friday = true,
-                    .saturday = true,
-                    .sunday = true
-            },
-            .args = new WateringTaskArgs(),
-            .enabled = true,
-            .executed = false
-    };
-    return scheduler.addTask(task);
-}
 
 /**
  * @brief Execute a watering task from schedule
@@ -322,8 +314,6 @@ void WateringTaskExec(schedule_task_t<WateringTaskArgs> task) {
 }
 
 #endif // ENABLE_SCHEDULER
-
-
 
 
 void setup() {
@@ -406,7 +396,9 @@ void setup() {
 #if defined(ENABLE_SERVER)
     server.onNotFound([](AsyncWebServerRequest *request) { request->send(404, "text/plain", "Not found"); });
 
+#if defined(ENABLE_WEB_INTERFACE)
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) { request->send(200, "text/html", MAINPAGE); });
+#endif
 
     server.on("/info", HTTP_ANY, [](AsyncWebServerRequest *request) {
         request->send(200, "application/json", getInfo());
@@ -414,13 +406,13 @@ void setup() {
 
 
     server.on("/restart", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/plain", "Restarting...");
+        responseSuccess(request, "Restarting...");
         delay(1000);
         ESP.restart();
     });
 
     server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/plain", "Reseting...");
+        responseSuccess(request, "Reseting...");
 #if defined(SPIFFS_H) && (defined(ENABLE_LOGGER) || defined(ENABLE_SCHEDULER))
         SPIFFS.format();
         SPIFFS.end();
@@ -445,19 +437,19 @@ void setup() {
             logger.log("VALVE_OPEN", "API", request->client()->remoteIP().toString());
 #endif
         }
-        request->send(200, "text/plain", "OK");
+        responseSuccess(request, "OK");
     });
 
 #if defined(ENABLE_LOGGER)
     server.on("/logs", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/plain", logger.getLogs());
+        responseSuccess(request, logger.getLogs());
     });
 #endif
 
 #if defined(ENABLE_SCHEDULER)
     server.on("/schedules", HTTP_GET, [](AsyncWebServerRequest *request) {
 #if defined(ENABLE_NFIREBASE)
-        request->send(200, "text/plain", String(scheduler.getTaskCount()));
+        request->send(200, "application/json", scheduler.toArray());
 #else
         String ret = "Object task count: " + String(scheduler.getTaskCount()) + "\n";
         ret += "Read from file:\n" + scheduler.getString();
@@ -465,42 +457,84 @@ void setup() {
 #endif
     });
 
-    server.on("/test-schedule", HTTP_GET, [](AsyncWebServerRequest *request) {
-        uint8_t id = 0, hour, min;
-        if (request->hasParam("id")) {
-            id = request->getParam("id")->value().toInt();
+    server.on("/add-schedule", [](AsyncWebServerRequest *request) {
+        if (!request->hasParam("time")) {
+            return responseError(request, "missing time");
         }
-        if (request->hasParam("hour")) {
-            hour = request->getParam("hour")->value().toInt();
+        bool isRepeatSet = false;
+        schedule_task_t<WateringTaskArgs> task = {
+                .enabled = true,
+                .executed = false,
+        };
+        task.id = scheduler.generateUid();
+        task.time = scheduler.parseTime(request->getParam("time")->value());
+        task.repeat = {};
+        task.args = new WateringTaskArgs();
+        if (request->hasParam("r1")) {
+            task.repeat.sunday = true;
+            isRepeatSet = true;
         }
-        if (request->hasParam("minute")) {
-            min = request->getParam("minute")->value().toInt();
+        if (request->hasParam("r2")) {
+            task.repeat.monday = true;
+            isRepeatSet = true;
         }
-        if (!id) {
-            request->send(400, "text/plain", "Invalid id");
-            return;
+        if (request->hasParam("r3")) {
+            task.repeat.tuesday = true;
+            isRepeatSet = true;
         }
-        if (setTestSchedule(id, hour, min)) {
-            request->send(200, "text/plain", "Schedule added");
+        if (request->hasParam("r4")) {
+            task.repeat.wednesday = true;
+            isRepeatSet = true;
+        }
+        if (request->hasParam("r5")) {
+            task.repeat.thursday = true;
+            isRepeatSet = true;
+        }
+        if (request->hasParam("r6")) {
+            task.repeat.friday = true;
+            isRepeatSet = true;
+        }
+        if (request->hasParam("r7")) {
+            task.repeat.saturday = true;
+            isRepeatSet = true;
+        }
+        if (!isRepeatSet) {
+            task.repeat = {
+                    .monday = true,
+                    .tuesday = true,
+                    .wednesday = true,
+                    .thursday = true,
+                    .friday = true,
+                    .saturday = true,
+                    .sunday = true,
+            };
+        }
+        if (request->hasParam("duration")) {
+            task.args->duration = request->getParam("duration")->value().toInt();
+        }
+//        if (request->hasParam("water_liters")) {
+//            task.args->waterLiters = request->getParam("water_liters")->value().toInt();
+//        }
+        if (request->hasParam("valve_level")) {
+            task.args->valveOpenLevel = request->getParam("valve_level")->value().toInt();
+        }
+        if (scheduler.addTask(task)) {
+            responseSuccess(request, "Schedule added");
         } else {
-            request->send(400, "text/plain", "Failed to add schedule");
+            delete task.args;
+            responseError(request, "Failed to add schedule");
         }
     });
 
     server.on("/remove-schedule", HTTP_GET, [](AsyncWebServerRequest *request) {
-        uint8_t id = 0;
-        if (request->hasParam("id")) {
-            id = request->getParam("id")->value().toInt();
+        if (!request->hasParam("id")) {
+            return responseError(request, "missing id");
         }
+        uint8_t id = request->getParam("id")->value().toInt();
         if (!id) {
-            request->send(400, "text/plain", "Invalid id");
-            return;
+            return responseError(request, "Invalid id");
         }
-        if (scheduler.removeTask(id)) {
-            request->send(200, "text/plain", "Removed schedule");
-        } else {
-            request->send(400, "text/plain", "Failed to remove schedule");
-        }
+        responseSuccess(request, scheduler.removeTask(id) ? "Schedule removed" : "Schedule not found");
     });
 #endif
 
@@ -553,7 +587,7 @@ void setup() {
     scheduler.attachDatabase(RTDBObj);
 #endif
 
-    timer.setInterval(250, [](){
+    timer.setInterval(250, []() {
         FirebaseIOT.loop();
     });
 
@@ -566,23 +600,7 @@ void setup() {
         // Set info
         FirebaseIOT.update("/info", (object_t) getInfo());
 
-        // Test schedule
-//        JsonWriter writer;
-//        object_t arr;
-//        arr.initArray();
-//        writer.join(arr, 2 /* no. of object_t (s) to join */,
-//                    object_t(string_t("1|7|0|1111111|10-0-1|0|0")),
-//                    object_t(string_t("2|10|30|1010101|10-0-1|1|0")));
-//        arr.printTo(Serial);
-//        FirebaseIOT.set<object_t>("/schedules", arr, printResult);
-
-//        FirebaseIOT.get("/schedules", [](AsyncResult &res){
-//            printResult(res);
-//            JSON::JsonParser parser(res.payload());
-//            Serial.printf("Item0: %s\n", parser.getItem(0).c_str());
-//            Serial.printf("Item1: %s\n", parser.getItem(1).c_str());
-//        });
-
+        // Load schedules
         scheduler.load();
 
 
@@ -596,14 +614,14 @@ void setup() {
                 syncRTDB();
             } else if (RTDB.dataPath() == "/" && RTDB.type() == realtime_database_data_type_json) {
                 JSON::JsonParser parser(RTDB.to<String>());
-                Valve.setState(parser.getBool("valve"));
-                ValvePower.setState(parser.getBool("r1"));
-                ValveDirection.setState(parser.getBool("r2"));
-                PumpPower.setState(parser.getBool("r3"));
-                ACPower.setState(parser.getBool("r4"));
+                Valve.setState(parser.get<bool>("valve"));
+                ValvePower.setState(parser.get<bool>("r1"));
+                ValveDirection.setState(parser.get<bool>("r2"));
+                PumpPower.setState(parser.get<bool>("r3"));
+                ACPower.setState(parser.get<bool>("r4"));
                 notifyState();
 
-                if (parser.getBool("water_leak") != WaterLeak.getState()) {
+                if (parser.get<bool>("water_leak") != WaterLeak.getState()) {
                     FirebaseIOT.set("/data/water_leak", WaterLeak.getState());
                 }
             } else if (RTDB.dataPath() == "/r1") {
@@ -678,18 +696,3 @@ void notifyState() {
 #endif
 
 }
-
-
-
-
-
-#if defined(ENABLE_NFIREBASE)
-
-void asyncCB(AsyncResult &aResult) {
-    // WARNING!
-    // Do not put your codes inside the callback and printResult.
-
-    printResult(aResult);
-}
-
-#endif // ENABLE_NFIREBASE

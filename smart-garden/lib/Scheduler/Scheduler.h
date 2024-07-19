@@ -324,28 +324,22 @@ public:
 
 #elif defined(STORE_SCHEDULES_IN_DATABASE)
 
-        String tasksArrayStr = "";
-        for (auto task: tasks) {
-            tasksArrayStr += "\"";
-            tasksArrayStr += String(task.id) + "|";
-            tasksArrayStr += String(task.time.hour) + "|";
-            tasksArrayStr += String(task.time.minute) + "|";
-            tasksArrayStr += task.repeat.monday ? "1" : "0";
-            tasksArrayStr += task.repeat.tuesday ? "1" : "0";
-            tasksArrayStr += task.repeat.wednesday ? "1" : "0";
-            tasksArrayStr += task.repeat.thursday ? "1" : "0";
-            tasksArrayStr += task.repeat.friday ? "1" : "0";
-            tasksArrayStr += task.repeat.saturday ? "1" : "0";
-            tasksArrayStr += String(task.repeat.sunday ? "1" : "0") + "|";
-            tasksArrayStr += task.args->toString() + "|";
-            tasksArrayStr += String(task.enabled ? "1" : "0") + "|";
-            tasksArrayStr += String(task.executed ? "1" : "0") + "\",";
-        }
-
-        if (tasksArrayStr.length() > 0) {
-            tasksArrayStr = tasksArrayStr.substring(0, tasksArrayStr.length() - 1);
-            tasksArrayStr = "[" + tasksArrayStr + "]";
-
+        String tasksArrayStr = toArray();
+        if (tasksArrayStr == "[]") {
+            // Schedule is empty, remove all tasks from database
+            DSPrint("Removing all tasks from database\n");
+            dbObj->rtdb->remove(
+                    *dbObj->client,
+                    getPath(),
+                    [](AsyncResult &res) {
+                        if (res.isError()) {
+                            DSPrint("> Failed to remove all tasks from database\n");
+                            DSPrint(">> msg: %s, code: %d\n", res.error().message().c_str(), res.error().code());
+                            return;
+                        }
+                        DSPrint("> All tasks removed from database\n");
+                    });
+        } else {
             DSPrint("Saving tasks to database\n");
             DSPrint(">>>>>>>>> \n%s\n", tasksArrayStr.c_str());
             dbObj->rtdb->set<object_t>(
@@ -359,20 +353,6 @@ public:
                             return;
                         }
                         DSPrint("> Tasks saved to database\n");
-                    });
-        } else {
-            // delete all tasks
-            DSPrint("Removing all tasks from database\n");
-            dbObj->rtdb->remove(
-                    *dbObj->client,
-                    getPath(),
-                    [](AsyncResult &res) {
-                        if (res.isError()) {
-                            DSPrint("> Failed to remove all tasks from database\n");
-                            DSPrint(">> msg: %s, code: %d\n", res.error().message().c_str(), res.error().code());
-                            return;
-                        }
-                        DSPrint("> All tasks removed from database\n");
                     });
 
         }
@@ -421,6 +401,7 @@ public:
         bool found = false;
         for (auto it = tasks.begin(); it != tasks.end(); ++it) {
             if (it->id == id) {
+                delete it->args;
                 tasks.erase(it);
                 found = true;
                 break;
@@ -694,20 +675,55 @@ public:
 
 
 #ifdef STORE_SCHEDULES_IN_FLASH
+
     /**
-     * @brief Get the String object
-     * 
-     * @return String 
-     */
-    String getString() {
-        openFile(false, READ_ONLY);
-        String result = file.readString();
-        closeFile();
-        if (result.length() == 0) {
-            result = "EMPTY";
+         * @brief Get the String object
+         *
+         * @return String
+         */
+        String getString() {
+            openFile(false, READ_ONLY);
+            String result = file.readString();
+            closeFile();
+            if (result.length() == 0) {
+                result = "EMPTY";
+            }
+            return result;
         }
-        return result;
+
+#elif defined(STORE_SCHEDULES_IN_DATABASE)
+
+    /**
+     * @brief Get the schedules as array string
+     * @return
+     */
+    String toArray() {
+        String tasksArrayStr = "";
+        for (auto task: tasks) {
+            tasksArrayStr += "\"";
+            tasksArrayStr += String(task.id) + "|";
+            tasksArrayStr += String(task.time.hour) + "|";
+            tasksArrayStr += String(task.time.minute) + "|";
+            tasksArrayStr += task.repeat.monday ? "1" : "0";
+            tasksArrayStr += task.repeat.tuesday ? "1" : "0";
+            tasksArrayStr += task.repeat.wednesday ? "1" : "0";
+            tasksArrayStr += task.repeat.thursday ? "1" : "0";
+            tasksArrayStr += task.repeat.friday ? "1" : "0";
+            tasksArrayStr += task.repeat.saturday ? "1" : "0";
+            tasksArrayStr += String(task.repeat.sunday ? "1" : "0") + "|";
+            tasksArrayStr += task.args->toString() + "|";
+            tasksArrayStr += String(task.enabled ? "1" : "0") + "|";
+            tasksArrayStr += String(task.executed ? "1" : "0") + "\",";
+        }
+        if (tasksArrayStr.length() > 0) {
+            // Remove last comma
+            tasksArrayStr = tasksArrayStr.substring(0, tasksArrayStr.length() - 1);
+            tasksArrayStr = "[" + tasksArrayStr + "]";
+            return tasksArrayStr;
+        }
+        return "[]";
     }
+
 #endif
 
 
@@ -717,7 +733,8 @@ public:
      * @param task 
      * @return schedule_task_t 
      */
-    static schedule_task_t<T> parseTask(const String &task) {
+    static schedule_task_t<T>
+    parseTask(const String &task) {
         schedule_task_t<T> result{};
         result.id = 0;
         result.args = new T();
@@ -777,5 +794,31 @@ public:
         return result;
     }
 
+    /**
+     * @brief Parse time from string format "HH:MM"
+     * @param time
+     * @return schedule_time_t
+     */
+    static schedule_time_t parseTime(const String &time) {
+        schedule_time_t result{};
+        int pos = time.indexOf(":");
+        if (pos < 0) {
+            return result;
+        }
+        result.hour = (uint8_t) time.substring(0, pos).toInt();
+        result.minute = (uint8_t) time.substring(pos + 1).toInt();
+        return result;
+    }
 
+    /**
+     * @brief generate a unique id for a task
+     * @return
+     */
+    uint8_t generateUid() {
+        uint8_t id = 0;
+        do {
+            id = static_cast<uint8_t>(rand());
+        } while (getTaskById(id).id != 0);
+        return id;
+    }
 };

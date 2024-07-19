@@ -224,58 +224,164 @@ public:
         _buf = "";
     }
 
-    String getString(const String &property) {
-        return JSON::getProperty(_buf, property);
+    /**
+     * @brief Return the value of the property in the JSON string
+     * @tparam T type of the property to be converted to
+     * @param property name of the property
+     * @return value of the property
+     */
+    template<typename T = String>
+    auto get(const String &property) -> typename std::enable_if<std::is_same<T, String>::value, T>::type
+    {
+        return getProperty(_buf, property);
     }
 
-    bool getBool(const String &property) {
-        return getString(property) == "true";
+    /**
+     * @brief Return the value of the property in the JSON string
+     * @tparam T type of the property to be converted to
+     * @param property name of the property
+     * @return value of the property
+     */
+    template<typename T = const char *>
+    auto get(const String &property) -> typename std::enable_if<std::is_same<T, const char *>::value, T>::type
+    {
+        return getProperty(_buf, property).c_str();
     }
 
-    uint32_t getInt(const String &property) {
-        return getString(property).toInt();
+    /**
+     * @brief Return the value of the property in the JSON string
+     * @tparam T type of the property to be converted to
+     * @param property name of the property
+     * @return value of the property
+     */
+    template<typename T>
+    auto get(const String &property) -> typename std::enable_if<std::is_same<T, bool>::value, T>::type
+    {
+        return getProperty(_buf, property) == "true";
     }
 
-    float getFloat(const String &property) {
-        return getString(property).toFloat();
+    /**
+     * @brief Return the value of the property in the JSON string
+     * @tparam T type of the property to be converted to
+     * @param property name of the property
+     * @return value of the property
+     */
+    template<typename T>
+    auto get(const String &property) -> typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
+    {
+        return static_cast<T>(getProperty(_buf, property).toInt());
     }
 
+    /**
+     * @brief Return the value of the property in the JSON string
+     * @tparam T type of the property to be converted to
+     * @param property name of the property
+     * @return value of the property
+     */
+    template<typename T>
+    auto get(const String &property) -> typename std::enable_if<std::is_floating_point<T>::value, T>::type
+    {
+        return static_cast<T>(getProperty(_buf, property).toFloat());
+    }
+
+    /**
+     * @brief Return the JsonParser object of the property in the JSON string
+     * @param property
+     * @return
+     */
     JsonParser *getObject(const String &property) {
         return new JsonParser(JSON::getProperty(_buf, property));
     }
 
 #ifdef USE_ARRAY
 
-    String getString(const String &property, unsigned int index) {
-        return JSON::getItem(JSON::getProperty(_buf, property), index);
-    }
-
-    bool getBool(const String &property, unsigned int index) {
-        return getString(property, index) == "true";
-    }
-
-    uint32_t getInt(const String &property, unsigned int index) {
-        return getString(property, index).toInt();
-    }
-
-    float getFloat(const String &property, unsigned int index) {
-        return getString(property, index).toFloat();
-    }
-
-    JsonParser *getObject(const String &property, unsigned int index) {
-        return new JsonParser(JSON::getItem(JSON::getProperty(_buf, property), index));
-    }
-
+    /**
+     * @brief Return the JsonParser object of the property in the JSON string
+     * @param property
+     * @return
+     */
     JsonParser *getArray(const String &property) {
         return getObject(property);
     }
 
-    JsonParser *getArray(const String &property, unsigned int index) {
-        return getObject(property, index);
+    /**
+     * @brief Return the value of the item in the JSON array string
+     * @tparam T type of the item to be converted to
+     * @param index index of the item. Start from 0
+     * @return value of the item
+     */
+    template<typename T = String>
+    auto getItem(unsigned int index) -> typename std::enable_if<std::is_same<T, String>::value, T>::type
+    {
+        return JSON::getItem(_buf, index);
     }
 
-    String getItem(unsigned int index) {
-        return JSON::getItem(_buf, index);
+    /**
+     * @brief Return the value of the item in the JSON array string
+     * @tparam T type of the item to be converted to
+     * @param index index of the item. Start from 0
+     * @return value of the item
+     */
+    template<typename T = const char *>
+    auto getItem(unsigned int index) -> typename std::enable_if<std::is_same<T, const char *>::value, T>::type
+    {
+        return JSON::getItem(_buf, index).c_str();
+    }
+
+    /**
+     * @brief Return the value of the item in the JSON array string
+     * @tparam T type of the item to be converted to
+     * @param index index of the item. Start from 0
+     * @return value of the item
+     */
+    template<typename T>
+    auto getItem(unsigned int index) -> typename std::enable_if<std::is_same<T, bool>::value, T>::type
+    {
+        return JSON::getItem(_buf, index) == "true";
+    }
+
+    /**
+     * @brief Return the value of the item in the JSON array string
+     * @tparam T type of the item to be converted to
+     * @param index index of the item. Start from 0
+     * @return value of the item
+     */
+    template<typename T>
+    auto getItem(unsigned int index) -> typename std::enable_if<std::is_integral<T>::value, T>::type
+    {
+        return static_cast<T>(JSON::getItem(_buf, index).toInt());
+    }
+
+    /**
+     * @brief Return the value of the item in the JSON array string
+     * @tparam T type of the item to be converted to
+     * @param index index of the item. Start from 0
+     * @return value of the item
+     */
+    template<typename T>
+    auto getItem(unsigned int index) -> typename std::enable_if<std::is_floating_point<T>::value, T>::type
+    {
+        return static_cast<T>(JSON::getItem(_buf, index).toFloat());
+    }
+
+    /**
+     * @brief Return the value of the Object item in the JSON array string
+     * @param index index of the item. Start from 0
+     * @return JsonParser object of the item
+     */
+    JsonParser *getItemObject(unsigned int index)
+    {
+        return new JsonParser(JSON::getItem(_buf, index));
+    }
+
+    /**
+     * @brief Return the value of the Array item in the JSON array string
+     * @param index index of the item. Start from 0
+     * @return JsonParser object of the item
+     */
+    JsonParser *getItemArray(unsigned int index)
+    {
+        return getItemObject(index);
     }
 
 #endif // USE_ARRAY
