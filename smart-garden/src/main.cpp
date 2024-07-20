@@ -21,8 +21,8 @@
 
 #define DEVICE_NAME "Watering System"
 //#define MDNS_NAME "garden"
-#define DEVICE_VERSION "0.2.7"
-#define FIRMWARE_VERSION 26
+#define DEVICE_VERSION "0.2.8"
+#define FIRMWARE_VERSION 29
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -92,38 +92,6 @@ void mainLoop() {
 
 
 /**
- * Set a test schedule
- * @return
- */
-String setTestSchedule(uint8_t id, uint8_t hour, uint8_t min) {
-    if (scheduler.getTaskById(id).id) return "Schedule already set";
-    schedule_task_t<WateringTaskArgs> task = {
-            .id = id,
-            .time = {
-                    .hour = hour,
-                    .minute = min
-            },
-            .repeat = {
-                    .monday = true,
-                    .tuesday = true,
-                    .wednesday = true,
-                    .thursday = true,
-                    .friday = true,
-                    .saturday = true,
-                    .sunday = true
-            },
-            .args = new WateringTaskArgs(),
-            .enabled = true,
-            .executed = false
-    };
-    return scheduler.addTask(task) ? "Schedule set" : "Failed to set schedule";
-}
-
-String removeSchedule(uint8_t id) {
-    return scheduler.removeTask(id) ? "Schedule removed" : "Failed to remove schedule";
-}
-
-/**
  * @brief Execute a watering task from schedule
  *
  * @param task
@@ -183,14 +151,14 @@ void setup() {
 
     WaterLeak.setActiveStateString("LEAK");
     WaterLeak.setInactiveStateString("NONE");
-    WaterLeak.onChange([](){
+    WaterLeak.onChange([]() {
         notifyState();
     });
     WaterLeak.onHoldState(true, 5000L, []() {
         Valve.close();
         logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
         logger.log("VALVE_CLOSE", "WATER_LEAK", "");
-        logger.logTele( "🚨 Phát hiện ngập nước");
+        logger.logTele("🚨 Phát hiện ngập nước");
     });
     WaterLeak.onHoldState(false, 5000L, []() {
         logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
@@ -209,6 +177,7 @@ void setup() {
         message += R"("version":")" DEVICE_VERSION "\",";
         message += R"("firmware":)" + String(FIRMWARE_VERSION) + ",";
         message += R"("ip":")" + WiFi.localIP().toString() + "\",";
+        message += R"("time":")" + timeClient.getFormattedTime() + "\",";
         message += R"("voltage":)" + String(PowerVoltage.get()) + ",";
         message += R"("valve":")" + Valve.getStateString() + "\",";
         message += R"("r1":")" + ValvePower.getStateString() + "\",";
@@ -279,34 +248,84 @@ void setup() {
         request->send(200, "text/plain", ret);
     });
 
-    server.on("/test-schedule", HTTP_GET, [](AsyncWebServerRequest *request) {
-        uint8_t id = 0, hour, min;
-        if (request->hasParam("id")) {
-            id = request->getParam("id")->value().toInt();
+    server.on("/add-schedule", [](AsyncWebServerRequest *request) {
+        if (!request->hasParam("time")) {
+            return request->send(400, "text/plain", "missing time");
         }
-        if (request->hasParam("hour")) {
-            hour = request->getParam("hour")->value().toInt();
+        bool isRepeatSet = false;
+        schedule_task_t<WateringTaskArgs> task = {
+                .enabled = true,
+                .executed = false,
+        };
+        task.id = scheduler.generateUid();
+        task.time = scheduler.parseTime(request->getParam("time")->value());
+        task.repeat = {};
+        task.args = new WateringTaskArgs();
+        if (request->hasParam("r1")) {
+            task.repeat.sunday = true;
+            isRepeatSet = true;
         }
-        if (request->hasParam("minute")) {
-            min = request->getParam("minute")->value().toInt();
+        if (request->hasParam("r2")) {
+            task.repeat.monday = true;
+            isRepeatSet = true;
         }
-        if (!id) {
-            request->send(400, "text/plain", "Invalid id");
-            return;
+        if (request->hasParam("r3")) {
+            task.repeat.tuesday = true;
+            isRepeatSet = true;
         }
-        request->send(200, "text/plain", setTestSchedule(id, hour, min));
+        if (request->hasParam("r4")) {
+            task.repeat.wednesday = true;
+            isRepeatSet = true;
+        }
+        if (request->hasParam("r5")) {
+            task.repeat.thursday = true;
+            isRepeatSet = true;
+        }
+        if (request->hasParam("r6")) {
+            task.repeat.friday = true;
+            isRepeatSet = true;
+        }
+        if (request->hasParam("r7")) {
+            task.repeat.saturday = true;
+            isRepeatSet = true;
+        }
+        if (!isRepeatSet) {
+            task.repeat = {
+                    .monday = true,
+                    .tuesday = true,
+                    .wednesday = true,
+                    .thursday = true,
+                    .friday = true,
+                    .saturday = true,
+                    .sunday = true,
+            };
+        }
+        if (request->hasParam("duration")) {
+            task.args->duration = request->getParam("duration")->value().toInt();
+        }
+//        if (request->hasParam("water_liters")) {
+//            task.args->waterLiters = request->getParam("water_liters")->value().toInt();
+//        }
+        if (request->hasParam("valve_level")) {
+            task.args->valveOpenLevel = request->getParam("valve_level")->value().toInt();
+        }
+        if (scheduler.addTask(task)) {
+            return request->send(200, "text/plain", "Schedule added");
+        } else {
+            delete task.args;
+            return request->send(400, "text/plain", "Fail to add schedule");
+        }
     });
 
     server.on("/remove-schedule", HTTP_GET, [](AsyncWebServerRequest *request) {
-        uint8_t id = 0;
-        if (request->hasParam("id")) {
-            id = request->getParam("id")->value().toInt();
+        if (!request->hasParam("id")) {
+            return request->send(400, "text/plain", "missing id");
         }
+        uint8_t id = request->getParam("id")->value().toInt();
         if (!id) {
-            request->send(400, "text/plain", "Invalid id");
-            return;
+            return request->send(400, "text/plain", "invalid id");
         }
-        request->send(200, "text/plain", removeSchedule(id));
+        return request->send(200, "text/plain", scheduler.removeTask(id) ? "Schedule removed" : "Schedule not found");
     });
 
     ElegantOTA.onEnd([](bool isSuccess) {
@@ -362,7 +381,7 @@ bool connectWiFi() {
 }
 
 void notifyState() {
-    if (ws.getClients().isEmpty()) return;
+    if (ws.getClients().empty()) return;
     String message = "R1:" + ValvePower.getStateString() + "\n";
     message += "R2:" + ValveDirection.getStateString() + "\n";
     message += "R3:" + PumpPower.getStateString() + "\n";

@@ -169,6 +169,34 @@ public:
      */
     static schedule_task_t<T> parseTask(const String& task);
 
+    /**
+     * @brief Parse time from string format "HH:MM"
+     * @param time
+     * @return schedule_time_t
+     */
+    static schedule_time_t parseTime(const String &time) {
+        schedule_time_t result{};
+        int pos = time.indexOf(":");
+        if (pos < 0) {
+            return result;
+        }
+        result.hour = (uint8_t) time.substring(0, pos).toInt();
+        result.minute = (uint8_t) time.substring(pos + 1).toInt();
+        return result;
+    }
+
+    /**
+     * @brief generate a unique id for a task
+     * @return
+     */
+    uint8_t generateUid() {
+        uint8_t id = 0;
+        do {
+            id = static_cast<uint8_t>(rand());
+        } while (getTaskById(id).id != 0);
+        return id;
+    }
+
 
 private:
     enum FileMode {
