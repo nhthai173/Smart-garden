@@ -12,4 +12,10 @@ typedef struct
 
 } fbrtdb_object;
 
+typedef struct {
+    bool success;
+    String message;
+    String data;
+} response_t;
+
 #endif // FIREBASE_RTDB_INTEGRATE_H

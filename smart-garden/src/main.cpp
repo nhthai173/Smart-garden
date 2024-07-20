@@ -14,13 +14,13 @@
  */
 
 
-// ayushsharma82/ElegantOTA@^3.1.2
+// https://github.com/me-no-dev/ESPAsyncWebServer.git
 #define ENABLE_SERVER
 
 // mobizt/FirebaseClient@^1.3.5
 #define ENABLE_NFIREBASE
 
-//#define ENABLE_LOGGER
+#define ENABLE_LOGGER
 
 #define ENABLE_SCHEDULER
 
@@ -237,6 +237,53 @@ void syncRTDB() {
     writer.create(o7, "restart", false);
     writer.join(json, 7, o1, o2, o3, o4, o5, o6, o7);
     FirebaseIOT.update("/data", json);
+}
+
+void updateOTA() {
+    Serial.println("Updating firmware...");
+    FirebaseIOT.beginOTA("/firmware/bin", [](AsyncResult &res) {
+        if (res.isError()) {
+            Serial.printf("OTA error: %s, code: %d\n", res.error().message().c_str(), res.error().code());
+        } else if (res.downloadProgress()) {
+            Firebase.printf("Download task: %s, downloaded %d%s (%d of %d)\n", res.uid().c_str(),
+                            res.downloadInfo().progress, "%", res.downloadInfo().downloaded,
+                            res.downloadInfo().total);
+            if (res.downloadInfo().total == res.downloadInfo().downloaded) {
+                Serial.printf("Download completed, task %s\n", res.uid().c_str());
+                timer.setTimeout(100L, []() {
+                    FirebaseIOT.set("/data/restart", false, [](AsyncResult &res) {
+                        Serial.println("Restarting...");
+                        ESP.restart();
+                    });
+                });
+            }
+        }
+    });
+}
+
+void checkOTA() {
+    FirebaseIOT.get("/firmware/version", [](AsyncResult &res) {
+        if (res.available()) {
+            auto &RTDB = res.to<RealtimeDatabaseResult>();
+            if (RTDB.type() == realtime_database_data_type_integer) {
+                if (RTDB.to<int>() <= FIRMWARE_VERSION) {
+                    Serial.println("The current firmware is up to date");
+                    timer.setTimeout(100L, [](){
+                        FirebaseIOT.remove("/firmware");
+                        FirebaseIOT.set("/data/restart", false);
+                    });
+                } else {
+                    Serial.printf("New firmware version: %d\n", RTDB.to<int>());
+                    timer.setTimeout(100L, updateOTA);
+                }
+            } else {
+                Serial.println("Invalid firmware version");
+                timer.setTimeout(100L, [](){
+                    FirebaseIOT.set("/data/restart", false);
+                });
+            }
+        }
+    });
 }
 
 #endif
@@ -600,21 +647,9 @@ void setup() {
             } else if (RTDB.dataPath() == "/restart") {
                 String v = RTDB.to<String>();
                 if (v == "ota") {
-                    FirebaseIOT.beginOTA("/firmware/bin", [](AsyncResult &res) {
-                        if (res.downloadProgress()) {
-                            Firebase.printf("Download task: %s, downloaded %d%s (%d of %d)\n", res.uid().c_str(),
-                                            res.downloadInfo().progress, "%", res.downloadInfo().downloaded,
-                                            res.downloadInfo().total);
-                            if (res.downloadInfo().total == res.downloadInfo().downloaded) {
-                                Serial.printf("Download completed, task %s\n", res.uid().c_str());
-                                FirebaseIOT.set("/data/restart", false, [](AsyncResult &res) {
-                                    Serial.println("Restarting...");
-                                    ESP.restart();
-                                });
-                            }
-                        }
-                    });
-                } else if (v != "false") {
+                    Serial.printf("Checking OTA...");
+                    checkOTA();
+                } else if (v == "true") {
                     FirebaseIOT.set("/data/restart", false, [](AsyncResult &res) {
                         Serial.println("Restarting...");
                         ESP.restart();
@@ -641,18 +676,8 @@ void setup() {
             notifyState();
         });
 
-        // Erase old Firmware
-        FirebaseIOT.get("/firmware/version", [](AsyncResult &res) {
-            if (res.available()) {
-                auto &RTDB = res.to<RealtimeDatabaseResult>();
-                if (RTDB.to<int>() <= FIRMWARE_VERSION) {
-                    Serial.println("Erasing old firmware...");
-                    timer.setTimeout(100, [](){
-                        FirebaseIOT.remove("/firmware");
-                    });
-                }
-            }
-        });
+        // Erase old Firmware and update new
+        checkOTA();
 
     }); // onFirstConnected
 

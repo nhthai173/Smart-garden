@@ -79,7 +79,8 @@
 class SLog : public Logger{
 
 public:
-    explicit SLog(NTPClient *timeClient) : Logger(timeClient) {
+    explicit SLog() : Logger() {
+        _maxLogTime = 30; // days
         filePath = "/slog.txt";
     }
 
@@ -99,12 +100,10 @@ public:
         return Logger::log(event + "-" + source + "-" + message);
     }
 
-    void logTele(const String &message) {
-        return;
-    }
+    void logTele(const String &message) {}
 
     void loop() {
-        Logger::processQueue();
+        processQueue();
     }
 
 };

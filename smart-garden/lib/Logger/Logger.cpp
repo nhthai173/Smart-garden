@@ -6,8 +6,7 @@
 
 #include <utility>
 
-Logger::Logger(NTPClient *timeClient) {
-    _timeClient = timeClient;
+Logger::Logger() {
     LOG_FS.begin();
 
     if (!LOG_FS.exists(filePath)) {
@@ -21,25 +20,27 @@ Logger::Logger(NTPClient *timeClient) {
     }
 }
 
-bool Logger::_log(String message) {
-    if (!_timeClient->isTimeSet()) {
-        _timeClient->begin();
-        _timeClient->update();
-        log_item_t item = {millis(), std::move(message)};
-        log_queue.push_back(item);
-        return false;
+bool Logger::_log(const String &message) {
+    if (time(nullptr) <= 1609459200) {
+        // Time is not set (2021-01-01)
+
+        log_queue_item item;
+        item.millis = millis();
+        item.message = message;
+        _log_queue.push_back(item);
+        return true;
     }
 
     File file = LOG_FS.open(filePath, "a");
     if (!file || file.name() == nullptr) {
         return false;
     }
-
-    file.printf("%ld %s\n", _timeClient->getEpochTime(), message.c_str());
+    time_t now;
+    time(&now);
+    file.printf("%ld %s\n", now, message.c_str());
     file.close();
     return true;
 }
-
 
 
 void Logger::clearOldLogs() {
@@ -52,8 +53,9 @@ void Logger::clearOldLogs() {
         return;
     }
 
-    _timeClient->update();
-    unsigned long minTime = _timeClient->getEpochTime() - _maxLogTime * 24 * 3600;
+    time_t now;
+    time(&now);
+    uint32_t minTime = now - _maxLogTime * 24 * 3600;
 
 #if defined(ESP8266)
     File tempFile = LOG_FS.open("/temp_log.txt", "w");
@@ -74,7 +76,7 @@ void Logger::clearOldLogs() {
             continue;
         }
 
-        unsigned long time = line.substring(0, index).toInt();
+        uint32_t time = line.substring(0, index).toInt();
         if (time >= minTime) {
             line.trim();
             tempFile.println(line);
@@ -87,8 +89,6 @@ void Logger::clearOldLogs() {
     LOG_FS.remove(filePath);
     LOG_FS.rename("/temp_log.txt", filePath);
 }
-
-
 
 
 void Logger::clearAllLogs() {
@@ -107,7 +107,6 @@ void Logger::clearAllLogs() {
 }
 
 
-
 String Logger::getLogs() {
     File file = LOG_FS.open(filePath, "r");
     if (!file || file.name() == nullptr) {
@@ -119,33 +118,31 @@ String Logger::getLogs() {
 }
 
 
-
-bool Logger::log(String message) {
-    return _log(std::move(message));
+bool Logger::log(const String &message) {
+    return _log(message);
 }
 
 
-
 void Logger::processQueue() {
-    if (!_timeClient->isTimeSet()) {
-        return;
-    }
-    if (log_queue.empty()) {
+    if (_log_queue.empty()) {
         return;
     }
 
-    String items = "";
-    uint32_t now = _timeClient->getEpochTime();
+    time_t now;
+    time(&now);
+    if (now <= 1609459200) {
+        // Time is not set (2021-01-01)
+        return;
+    }
+
     File file = LOG_FS.open(filePath, "a");
     if (!file || file.name() == nullptr) {
         return;
     }
 
-    for (auto &item : log_queue) {
-        items += String(now - round((millis() - item.time)/1000));
-        items += " " + item.message + "\n";
+    for (auto &item: _log_queue) {
+        file.printf("%ld %s\n", now - (millis() - item.millis), item.message.c_str());
     }
-    log_queue.clear();
-    file.print(items);
+    _log_queue.clear();
     file.close();
 }
