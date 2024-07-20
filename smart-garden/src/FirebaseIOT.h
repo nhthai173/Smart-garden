@@ -6,6 +6,7 @@
 #define SMART_GARDEN_FIREBASEIOT_H
 
 #define USE_STREAM
+#define USE_OTA
 #define FB_PRINT_RESULT
 
 #include <FirebaseClient.h>
@@ -140,11 +141,33 @@ public:
         Database.get(aClient, DB_DEVICE_PATH + path, callback, false, uid);
     }
 
+    void remove(const String &path) const {
+        Database.remove(aClient, DB_DEVICE_PATH + path, aResult_no_callback);
+    }
+
+    void remove(const String &path, AsyncResultCallback callback, const String &uid = "") const {
+        Database.remove(aClient, DB_DEVICE_PATH + path, callback, uid);
+    }
+
 #ifdef USE_STREAM
 
     bool setStream(const String &path, AsyncResultCallback callback, const String &uid = "streamTask") const {
         Database.get(streamClient, DB_DEVICE_PATH + path, callback, true, uid);
         return true;
+    }
+
+#endif
+
+#if defined(USE_OTA)
+
+    /**
+     * @brief Download firmware from Firebase RTDB
+     * @param path
+     * @param callback
+     * @param uid
+     */
+    void beginOTA(const String &path, AsyncResultCallback callback, const String &uid = "otaTask") const {
+        Database.ota(aClient, DB_DEVICE_PATH + path, callback, uid);
     }
 
 #endif

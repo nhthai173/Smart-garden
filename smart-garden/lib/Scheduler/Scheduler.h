@@ -1,10 +1,9 @@
 #pragma once
 
-#include <Arduino.h>
 #include <vector>
-#include <NTPClient.h>
+#include <Arduino.h>
 
-#define DEBUG_SCHEDULER
+//#define DEBUG_SCHEDULER
 #define STORE_SCHEDULES_IN_DATABASE
 
 #if __has_include(<FirebaseClient.h>)
@@ -89,7 +88,7 @@ class Scheduler {
 
 private:
 
-    NTPClient *timeClient = nullptr;
+    struct tm *_timeinfo = nullptr;
     std::vector<schedule_task_t<T>> tasks;
     std::function<void(schedule_task_t<T>)> _callbackFn = nullptr;
 
@@ -196,8 +195,7 @@ public:
 
 #ifdef STORE_SCHEDULES_IN_FLASH
 
-    explicit Scheduler(NTPClient *timeClient, std::function<void(schedule_task_t<T>)> callback = nullptr) {
-        this->timeClient = timeClient;
+    explicit Scheduler(std::function<void(schedule_task_t<T>)> callback = nullptr) {
         SCHEDULE_FS.begin();
         // Load tasks from file
         load();
@@ -207,14 +205,11 @@ public:
 
     Scheduler() = default;
 
-    explicit Scheduler(NTPClient *timeClient, std::function<void(schedule_task_t<T>)> callback = nullptr) {
-        this->timeClient = timeClient;
+    explicit Scheduler(std::function<void(schedule_task_t<T>)> callback) {
         _callbackFn = callback;
     }
 
-    explicit Scheduler(NTPClient *timeClient, fbrtdb_object *dbObj,
-                       std::function<void(schedule_task_t<T>)> callback = nullptr) {
-        this->timeClient = timeClient;
+    explicit Scheduler(fbrtdb_object *dbObj, std::function<void(schedule_task_t<T>)> callback = nullptr) {
         this->dbObj = dbObj;
         _callbackFn = callback;
     }
@@ -224,12 +219,13 @@ public:
 
     ~Scheduler() {
         tasks.clear();
-        timeClient = nullptr;
+        _timeinfo = nullptr;
 
 #ifdef STORE_SCHEDULES_IN_FLASH
         closeFile();
         SCHEDULE_FS.end();
 #elif defined(STORE_SCHEDULES_IN_DATABASE)
+        _loadResult.clear();
         dbObj = nullptr;
 #endif
 
@@ -499,16 +495,6 @@ public:
 
 #endif
 
-
-    /**
-     * @brief Set the NTPClient object
-     * @param client
-     */
-    void setNTPClient(NTPClient *client) {
-        this->timeClient = client;
-    }
-
-
     /**
      * @brief Set the Callback object
      *
@@ -587,21 +573,24 @@ public:
 
         /* ========= Run ========= */
 
-        if (tasks.empty() || timeClient == nullptr) {
+        if (tasks.empty()) {
             return;
         }
 
-        if (!timeClient->isTimeSet()) {
-            timeClient->begin();
-            timeClient->update();
+        // Get current time
+        if (time(nullptr) <= 1609459200) {
+            // Time is not set (2021-01-01)
             return;
         }
-
-        uint8_t h = timeClient->getHours();
-        uint8_t m = timeClient->getMinutes();
-        uint8_t dow = timeClient->getDay(); // 0 is sunday
+        time_t now;
+        time(&now);
+        _timeinfo = localtime(&now);
+        uint8_t h = _timeinfo->tm_hour;
+        uint8_t m = _timeinfo->tm_min;
+        uint8_t dow = _timeinfo->tm_wday; // 0 = Sunday
         bool anychange = false;
 
+        DSPrint("Current time: %d, %02d:%02d\n", dow, h, m);
         for (auto &task: tasks) {
             if (task.enabled) {
                 if ((task.repeat.monday && dow == 1) ||
@@ -613,12 +602,14 @@ public:
                     (task.repeat.sunday && dow == 0)) {
                     if (task.time.hour == h && task.time.minute == m) {
                         if (!task.executed) {
+                            DSPrint("> Executing task [%d]\n", task.id);
                             task.executed = true;
                             anychange = true;
                             if (_callbackFn)
                                 _callbackFn(task);
                         }
                     } else if (task.executed) {
+                        DSPrint("> Reset task [%d]\n", task.id);
                         task.executed = false;
                         anychange = true;
                     }

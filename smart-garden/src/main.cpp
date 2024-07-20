@@ -20,23 +20,11 @@
 // mobizt/FirebaseClient@^1.3.5
 #define ENABLE_NFIREBASE
 
-// https://github.com/nhthai173//NTPClient.git
-#define ENABLE_NTP
+//#define ENABLE_LOGGER
 
-//#define USE_LOGGER
-
-#define USE_SCHEDULER
+#define ENABLE_SCHEDULER
 
 #define USE_WEB_INTERFACE
-
-#if defined(ENABLE_NTP)
-#if defined(USE_LOGGER)
-#define ENABLE_LOGGER
-#endif
-#if defined(USE_SCHEDULER)
-#define ENABLE_SCHEDULER
-#endif
-#endif
 
 #if defined(ENABLE_SERVER) && defined(USE_WEB_INTERFACE)
 #define ENABLE_WEB_INTERFACE
@@ -44,9 +32,8 @@
 
 
 #include "version.h"
+
 #define DEVICE_NAME "Watering System"
-// #define DEVICE_VERSION "0.3.0"
-// #define FIRMWARE_VERSION 46
 
 #define FLOW_SENSOR_PIN 35
 #define VOLTAGE_PIN 32
@@ -64,17 +51,9 @@
 #include "VirtualOutput.h"
 #include "VoltageReader.h"
 
-#if defined(ENABLE_NTP)
-
-#include <WiFiUdp.h>
-#include <NTPClient.h>
-
-#endif // ENABLE_NTP
-
 #if defined(ENABLE_SERVER)
 
 #include <ESPAsyncWebServer.h>
-#include <ElegantOTA.h>
 
 #if defined(ENABLE_WEB_INTERFACE)
 
@@ -90,10 +69,14 @@
 #include "FirebaseIOT.h"
 #include "FirebaseRTDBIntegrate.h"
 
+static uint32_t acceptedCallbackMillis = 0;
+
 fbrtdb_object *RTDBObj;
 
 #endif // ENABLE_NFIREBASE
 
+//#include "TimeHelper.h"
+//TimeHelper Time;
 
 GenericOutput ValvePower(19, OUTPUT_ACTIVE_STATE, 8000L /* 8 sec */); // R1
 GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
@@ -107,17 +90,13 @@ GenericOutput led(LED_BUILTIN, OUTPUT_ACTIVE_STATE);
 
 SimpleTimer timer;
 
-#if defined(ENABLE_NTP)
-WiFiUDP ntpUDP;
-NTPClient timeClient = NTPClient(ntpUDP, "pool.ntp.org", 7 * 3600);
-
 #if defined(ENABLE_SCHEDULER)
 
 #include "WateringSchedule.h"
 
 void WateringTaskExec(schedule_task_t<WateringTaskArgs> task);
 
-Scheduler<WateringTaskArgs> scheduler(&timeClient, WateringTaskExec);
+Scheduler<WateringTaskArgs> scheduler(WateringTaskExec);
 
 #endif // ENABLE_SCHEDULER
 
@@ -125,10 +104,9 @@ Scheduler<WateringTaskArgs> scheduler(&timeClient, WateringTaskExec);
 
 #include "SLog.h"
 //SLog logger(&timeClient, BOT_TOKEN, CHAT_ID);
-SLog logger(&timeClient);
+SLog logger;
 
 #endif // ENABLE_LOGGER
-#endif // ENABLE_NTP
 
 
 #if defined(ENABLE_SERVER)
@@ -152,6 +130,8 @@ String getInfo() {
     info += R"("version":")" DEVICE_VERSION "\",";
     info += R"("firmware":)" + String(FIRMWARE_VERSION) + ",";
     info += R"("ip":")" + WiFi.localIP().toString() + "\"";
+//    info += R"("timestamp":)" + String(Time.getUnixTime()) + ",";
+//    info += R"("datetime":")" + Time.getDateTime() + "\"";
 
 //    info += R"("ip":")" + WiFi.localIP().toString() + "\",";
 //    info += R"("voltage":)" + String(PowerVoltage.get()) + ",";
@@ -247,14 +227,15 @@ void responseError(AsyncWebServerRequest *request, const String &message) {
 
 void syncRTDB() {
     JsonWriter writer;
-    object_t o1, o2, o3, o4, o5, o6, json;
+    object_t o1, o2, o3, o4, o5, o6, o7, json;
     writer.create(o1, "valve", Valve.getState());
     writer.create(o2, "r1", ValvePower.getState());
     writer.create(o3, "r2", ValveDirection.getState());
     writer.create(o4, "r3", PumpPower.getState());
     writer.create(o5, "r4", ACPower.getState());
     writer.create(o6, "water_leak", WaterLeak.getState());
-    writer.join(json, 6, o1, o2, o3, o4, o5, o6);
+    writer.create(o7, "restart", false);
+    writer.join(json, 7, o1, o2, o3, o4, o5, o6, o7);
     FirebaseIOT.update("/data", json);
 }
 
@@ -267,14 +248,8 @@ void mainLoop() {
     Valve.loop();
     PumpPower.loop();
     PowerVoltage.loop();
-#if defined(ENABLE_NTP)
-    timeClient.update();
-#if defined(ENABLE_SCHEDULER)
-    scheduler.run();
-#endif
 #if defined(ENABLE_LOGGER)
     logger.loop();
-#endif
 #endif
 }
 
@@ -324,6 +299,8 @@ void setup() {
     if (!connectWiFi()) {
         Serial.println("Failed to connect to WiFi");
     }
+
+    configTime(7 * 3600, 0, "pool.ntp.org");
 
 //    logger.setTeleLogPrefix("🌱 Vườn cây");
 
@@ -538,34 +515,25 @@ void setup() {
     });
 #endif
 
-#if defined(ENABLE_LOGGER)
-    ElegantOTA.onEnd([](bool isSuccess) {
-        if (isSuccess) {
-            logger.log("FIRMWARE_UPDATE", "WEB", String(FIRMWARE_VERSION));
-        } else {
-            logger.log("FIRMWARE_UPDATE_FAILED", "WEB", String(FIRMWARE_VERSION));
-        }
-    });
-#endif
-
     /* ===================== */
 
     ws.onEvent(WSHandler);
-    ElegantOTA.begin(&server);
     server.addHandler(&ws);
     server.begin();
 #endif
 
-#if defined(ENABLE_NTP)
-    timeClient.begin();
-    timeClient.update();
 #if defined(ENABLE_LOGGER)
     logger.clearOldLogs();
     logger.log("START", "SYSTEM", String(FIRMWARE_VERSION));
 #endif // ENABLE_LOGGER
-#endif // ENABLE_NTP
 
     timer.setInterval(500L, mainLoop);
+
+#if defined(ENABLE_SCHEDULER)
+    timer.setInterval(3000L, []() {
+        scheduler.run();
+    });
+#endif
 
 
 #if defined(ENABLE_NFIREBASE)
@@ -595,13 +563,18 @@ void setup() {
     FirebaseIOT.onFirstConnected([]() {
         // Update path
         RTDBObj->prefixPath = FirebaseIOT.DB_DEVICE_PATH + "/data";
+
+#ifdef ENABLE_SCHEDULER
         scheduler.setPath(FirebaseIOT.DB_DEVICE_PATH + "/schedules");
+#endif
 
         // Set info
         FirebaseIOT.update("/info", (object_t) getInfo());
 
         // Load schedules
+#ifdef ENABLE_SCHEDULER
         scheduler.load();
+#endif
 
 
         // Set stream
@@ -624,23 +597,65 @@ void setup() {
                 if (parser.get<bool>("water_leak") != WaterLeak.getState()) {
                     FirebaseIOT.set("/data/water_leak", WaterLeak.getState());
                 }
-            } else if (RTDB.dataPath() == "/r1") {
-                ValvePower.setState(RTDB.to<bool>());
-            } else if (RTDB.dataPath() == "/r2") {
-                ValveDirection.setState(RTDB.to<bool>());
-            } else if (RTDB.dataPath() == "/r3") {
-                PumpPower.setState(RTDB.to<bool>());
-            } else if (RTDB.dataPath() == "/r4") {
-                ACPower.setState(RTDB.to<bool>());
-            } else if (RTDB.dataPath() == "/valve") {
-                Valve.setState(RTDB.to<bool>());
+            } else if (RTDB.dataPath() == "/restart") {
+                String v = RTDB.to<String>();
+                if (v == "ota") {
+                    FirebaseIOT.beginOTA("/firmware/bin", [](AsyncResult &res) {
+                        if (res.downloadProgress()) {
+                            Firebase.printf("Download task: %s, downloaded %d%s (%d of %d)\n", res.uid().c_str(),
+                                            res.downloadInfo().progress, "%", res.downloadInfo().downloaded,
+                                            res.downloadInfo().total);
+                            if (res.downloadInfo().total == res.downloadInfo().downloaded) {
+                                Serial.printf("Download completed, task %s\n", res.uid().c_str());
+                                FirebaseIOT.set("/data/restart", false, [](AsyncResult &res) {
+                                    Serial.println("Restarting...");
+                                    ESP.restart();
+                                });
+                            }
+                        }
+                    });
+                } else if (v != "false") {
+                    FirebaseIOT.set("/data/restart", false, [](AsyncResult &res) {
+                        Serial.println("Restarting...");
+                        ESP.restart();
+                    });
+                }
             } else if (RTDB.dataPath() == "/water_leak" && RTDB.to<bool>() != WaterLeak.getState()) {
                 FirebaseIOT.set("/data/water_leak", WaterLeak.getState());
+            } else {
+                if (RTDB.dataPath() == "/r3") {
+                    PumpPower.setState(RTDB.to<bool>());
+                } else if (RTDB.dataPath() == "/valve") {
+                    Valve.setState(RTDB.to<bool>());
+                } else if (millis() > acceptedCallbackMillis) {
+                    if (RTDB.dataPath() == "/r1") {
+                        ValvePower.setState(RTDB.to<bool>());
+                    } else if (RTDB.dataPath() == "/r2") {
+                        ValveDirection.setState(RTDB.to<bool>());
+                    } else if (RTDB.dataPath() == "/r4") {
+                        ACPower.setState(RTDB.to<bool>());
+                    }
+                }
             }
 
             notifyState();
         });
-    });
+
+        // Erase old Firmware
+        FirebaseIOT.get("/firmware/version", [](AsyncResult &res) {
+            if (res.available()) {
+                auto &RTDB = res.to<RealtimeDatabaseResult>();
+                if (RTDB.to<int>() <= FIRMWARE_VERSION) {
+                    Serial.println("Erasing old firmware...");
+                    timer.setTimeout(100, [](){
+                        FirebaseIOT.remove("/firmware");
+                    });
+                }
+            }
+        });
+
+    }); // onFirstConnected
+
 #endif // ENABLE_NFIREBASE
 
 
@@ -655,7 +670,6 @@ void loop() {
     timer.run();
 #if defined(ENABLE_SERVER)
     ws.cleanupClients();
-    ElegantOTA.loop();
 #endif
 }
 
@@ -681,11 +695,11 @@ bool connectWiFi() {
 void notifyState() {
 
 #if defined(ENABLE_NFIREBASE)
-
+    acceptedCallbackMillis = millis() + 10000;
 #endif
 
 #if defined(ENABLE_SERVER)
-    if (ws.getClients().empty()) return;
+    if (ws.getClients().isEmpty()) return;
     String message = "R1:" + ValvePower.getStateString() + "\n";
     message += "R2:" + ValveDirection.getStateString() + "\n";
     message += "R3:" + PumpPower.getStateString() + "\n";
