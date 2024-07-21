@@ -1,10 +1,10 @@
 #ifndef TELEGRAM_LOGGER_H
 #define TELEGRAM_LOGGER_H
 
-#include "TelegramBotLite.h"
 #include <vector>
 #include "WiFiUdp.h"
 #include "NTPClient.h"
+#include "FastBot.h"
 
 typedef struct {
     uint32_t unix = 0;
@@ -18,7 +18,7 @@ class TelegramLogger {
 public:
     TelegramLogger() = default;
 
-    explicit TelegramLogger(TelegramBotLite *bot, NTPClient *ntpClient = nullptr) {
+    explicit TelegramLogger(FastBot *bot, NTPClient *ntpClient = nullptr) {
         _bot = bot;
         _ntpClient = ntpClient;
         if (_bot != nullptr) {
@@ -91,7 +91,7 @@ public:
     }
 
 protected:
-    TelegramBotLite *_bot = nullptr;
+    FastBot *_bot = nullptr;
     NTPClient *_ntpClient = nullptr;
     std::vector<TL_item> log_queue;
 };

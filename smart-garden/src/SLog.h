@@ -14,7 +14,7 @@ private:
     String _teleLogPrefix = "";
 
 public:
-    explicit SLog(NTPClient *timeClient, TelegramBotLite *bot = nullptr) : Logger(timeClient), TelegramLogger(bot, timeClient) {
+    explicit SLog(NTPClient *timeClient, FastBot *bot = nullptr) : Logger(timeClient), TelegramLogger(bot, timeClient) {
         filePath = "/slog.txt";
         if (bot != nullptr) {
             bot->setTextMode(0);
@@ -24,16 +24,16 @@ public:
 
     SLog(NTPClient *timeClient, const String &bot_token, const String &chat_id = "") : Logger(timeClient) {
         filePath = "/slog.txt";
-        TelegramLogger::_bot = new TelegramBotLite(bot_token);
+        TelegramLogger::_bot = new FastBot(bot_token);
         TelegramLogger::_bot->setTextMode(0);
         if (chat_id != "") {
-            TelegramLogger::_bot->setChatId(chat_id);
+            TelegramLogger::_bot->setChatID(chat_id);
         }
         TelegramLogger::setTimezone(7);
     }
 
     void setChatId(const String &chat_id) {
-        TelegramLogger::_bot->setChatId(chat_id);
+        TelegramLogger::_bot->setChatID(chat_id);
     }
 
     void setTeleLogPrefix(const String &prefix) {
