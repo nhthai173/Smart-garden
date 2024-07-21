@@ -103,8 +103,9 @@ Scheduler<WateringTaskArgs> scheduler(WateringTaskExec);
 #if defined(ENABLE_LOGGER)
 
 #include "SLog.h"
-//SLog logger(&timeClient, BOT_TOKEN, CHAT_ID);
-SLog logger;
+
+SLog logger(BOT_TOKEN, CHAT_ID);
+//SLog logger;
 
 #endif // ENABLE_LOGGER
 
@@ -192,13 +193,20 @@ WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType type, v
             } else if (message.startsWith("R4:")) {
                 ACPower.setState(message.substring(3));
             } else if (message.startsWith("VALVE:")) {
-                if (message.substring(6).startsWith("OPEN")) {
+                String cmd = message.substring(6);
+                if (cmd.startsWith("OPEN")) {
+                    cmd = "OPEN";
                     Valve.open();
-                } else {
+                } else if (cmd.startsWith("CLOSE")) {
+                    cmd = "CLOSE";
                     Valve.close();
+                } else {
+                    cmd = "";
                 }
 #if defined(ENABLE_LOGGER)
-                logger.log("VALVE_" + message.substring(6), "WEB", client->remoteIP().toString());
+                if (cmd != "") {
+                    logger.log("VALVE_" + message.substring(6), "WEB", client->remoteIP().toString());
+                }
 #endif
             }
             break;
@@ -268,7 +276,7 @@ void checkOTA() {
             if (RTDB.type() == realtime_database_data_type_integer) {
                 if (RTDB.to<int>() <= FIRMWARE_VERSION) {
                     Serial.println("The current firmware is up to date");
-                    timer.setTimeout(100L, [](){
+                    timer.setTimeout(100L, []() {
                         FirebaseIOT.remove("/firmware");
                         FirebaseIOT.set("/data/restart", false);
                     });
@@ -278,7 +286,7 @@ void checkOTA() {
                 }
             } else {
                 Serial.println("Invalid firmware version");
-                timer.setTimeout(100L, [](){
+                timer.setTimeout(100L, []() {
                     FirebaseIOT.set("/data/restart", false);
                 });
             }
@@ -290,6 +298,7 @@ void checkOTA() {
 
 
 void mainLoop() {
+    WaterLeak.loop();
     ValvePower.loop();
     ACPower.loop();
     Valve.loop();
@@ -297,6 +306,9 @@ void mainLoop() {
     PowerVoltage.loop();
 #if defined(ENABLE_LOGGER)
     logger.loop();
+#endif
+#if defined(ENABLE_SERVER)
+    ws.cleanupClients();
 #endif
 }
 
@@ -318,17 +330,15 @@ void WateringTaskExec(schedule_task_t<WateringTaskArgs> task) {
     }
 
     if (task.args->duration > 0) {
-        Valve.open(task.args->duration * 60000L);
+        Valve.openOnce(task.args->duration * 60000L, true);
     } else {
         // open with default duration
-        Valve.open();
+        Valve.open(true);
     }
 
     // if specified, open the valve to a certain level
     if (task.args->valveOpenLevel > 0) {
-        ValvePower.off();
-        delay(1000);
-        ValvePower.on(task.args->valveOpenLevel * 10);
+        ValvePower.onPercentage(task.args->valveOpenLevel * 10);
     }
 #if defined(ENABLE_LOGGER)
     logger.log("VALVE_OPEN", "SCHEDULE", task.args->toString());
@@ -386,9 +396,27 @@ void setup() {
         PumpPower.off();
     });
     Valve.onPowerChanged(notifyState);
+    Valve.onPowerOn([]() {
+#if defined(ENABLE_LOGGER)
+        String mes = "*🌱 Đã bắt đầu tưới nước*\nThời gian còn lại: `" + Valve.getRemainingTimeString() + "`";
+        static int update_valve_state_timer = -1;
+        logger.logTele(mes, [](uint16_t msgId) {
+            update_valve_state_timer = timer.setInterval(5000L, [msgId]() {
+                if (!Valve.getState()) {
+                    logger.logTeleEdit(msgId, "🌱 Đã kết thúc tưới nước");
+                    timer.deleteTimer(update_valve_state_timer);
+                } else {
+                    logger.logTeleEdit(msgId, "*🌱 Đã bắt đầu tưới nước*\nThời gian còn lại: `" +
+                                              Valve.getRemainingTimeString() + "`");
+                }
+            });
+        });
+#endif
+    });
     Valve.onAutoOff([]() {
 #if defined(ENABLE_LOGGER)
         logger.log("VALVE_CLOSE", "AUTO_TIMEOUT", "");
+        logger.logTele("🌱 Đã tự động tắt nước");
 #endif
     });
 
@@ -403,7 +431,7 @@ void setup() {
         notifyState();
     });
     WaterLeak.onHoldState(true, 5000L, []() {
-        Valve.close();
+        Valve.close(true);
 #if defined(ENABLE_LOGGER)
         logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
         logger.log("VALVE_CLOSE", "WATER_LEAK", "");
@@ -544,6 +572,15 @@ void setup() {
         }
         if (scheduler.addTask(task)) {
             responseSuccess(request, "Schedule added");
+#if defined(ENABLE_LOGGER)
+            String log = "*🌱 Đã thêm 1 hẹn giờ mới*\n";
+            log += "ID: `" + String(task.id) + "`\n";
+            log += "Thời gian: " + task.time.toString() + "\n";
+            log += "Thời lượng: " + String(task.args->duration) + " phút\n";
+            log += "Mức mở van: " + String(task.args->valveOpenLevel * 10) + "%\n";
+            log += "Lặp lại: " + task.repeat.toString() + "\n";
+            logger.logTele(log);
+#endif
         } else {
             delete task.args;
             responseError(request, "Failed to add schedule");
@@ -559,6 +596,9 @@ void setup() {
             return responseError(request, "Invalid id");
         }
         responseSuccess(request, scheduler.removeTask(id) ? "Schedule removed" : "Schedule not found");
+#if defined(ENABLE_LOGGER)
+        logger.logTele("🌱 Đã xóa 1 hẹn giờ");
+#endif
     });
 #endif
 
@@ -691,11 +731,11 @@ void setup() {
 
 
 void loop() {
-    WaterLeak.loop();
+//    WaterLeak.loop();
     timer.run();
-#if defined(ENABLE_SERVER)
-    ws.cleanupClients();
-#endif
+//#if defined(ENABLE_SERVER)
+//    ws.cleanupClients();
+//#endif
 }
 
 bool connectWiFi() {

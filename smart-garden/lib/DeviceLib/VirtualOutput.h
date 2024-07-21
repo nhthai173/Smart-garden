@@ -5,6 +5,8 @@
 #ifndef VIRTUALOUTPUT_H
 #define VIRTUALOUTPUT_H
 
+#include <utility>
+
 #include "GenericOutput.h"
 
 class VirtualOutput : public GenericOutput {
@@ -17,17 +19,18 @@ public:
      * @param offFunction function to execute when power is off
      * @param autoOffEnabled enable auto off feature
      */
-    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction, bool autoOffEnabled = false) : GenericOutput() {
+    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction, String onStateString = "ON", String offStateString = "OFF") : GenericOutput() {
         _onFunction = std::move(onFunction);
         _offFunction = std::move(offFunction);
-        _autoOffEnabled = autoOffEnabled;
+        _onStateString = std::move(onStateString);
+        _offStateString = std::move(offStateString);
     }
 
     /**
      * @brief Construct a new Virtual Output object with auto off feature and duration
      * @param duration duration to turn off after power is on in milliseconds
      */
-    VirtualOutput(unsigned long duration) : GenericOutput() {
+    explicit VirtualOutput(unsigned long duration) : GenericOutput() {
         _autoOffEnabled = false;
         _duration = duration;
         if (duration > 0) {
@@ -39,45 +42,46 @@ public:
      * @brief Set power to ON
      *
      */
-    void on() override;
+    void on(bool force) override;
 
     /**
      * @brief Set power to OFF
      *
      */
-    void off() override;
+    void off(bool force) override;
 
     /**
      * @brief alternate name for on()
-     *
+     * @param force force to set power
      */
-    void open() {
-        on();
+    void open(bool force = false) {
+        on(force);
     }
 
 
     /**
-     * @brief set power on for a duration. Only works once
-     * @param duration
+     * @brief set power on for a duration. Only works once, the next time it will be on with default duration
+     * @param duration duration in milliseconds
+     * @param force force to set power
      */
-    void open(uint32_t duration) {
-        GenericOutput::on(duration);
+    void openOnce(uint32_t duration, bool force = false) {
+        GenericOutput::onOnce(duration, force);
     }
 
     /**
      * @brief set power on with percentage timing (0-100%) based on the duration
      * @param percentage 1-100
      */
-    void openPercentage(uint8_t percentage) {
-        GenericOutput::onPercentage(percentage);
+    void openPercentage(uint8_t percentage, bool force = false) {
+        GenericOutput::onPercentage(percentage, force);
     }
 
     /**
      * @brief alternate name for off()
      *
      */
-    void close() {
-        off();
+    void close(bool force = false) {
+        off(force);
     }
 
     /**

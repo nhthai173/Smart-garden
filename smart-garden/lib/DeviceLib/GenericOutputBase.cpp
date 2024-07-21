@@ -47,8 +47,8 @@ void stdGenericOutput::GenericOutputBase::_write() {
 #endif
 }
 
-void stdGenericOutput::GenericOutputBase::on() {
-    if (_state) return;
+void stdGenericOutput::GenericOutputBase::on(bool force) {
+    if (!force && _state) return;
     _state = true;
     _write();
     if (_onPowerOn != nullptr) {
@@ -64,8 +64,8 @@ void stdGenericOutput::GenericOutputBase::on() {
 #endif
 }
 
-void stdGenericOutput::GenericOutputBase::off() {
-    if (!_state) return;
+void stdGenericOutput::GenericOutputBase::off(bool force) {
+    if (!force && !_state) return;
     _state = false;
     _write();
     if (_onPowerOff != nullptr) {

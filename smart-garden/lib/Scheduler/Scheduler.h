@@ -45,6 +45,17 @@ class Scheduler;
 struct schedule_time_t {
     uint8_t hour;
     uint8_t minute;
+
+    String toString() const {
+        String out = "";
+        if (hour < 10)
+            out += "0";
+        out += String(hour) + ":";
+        if (minute < 10)
+            out += "0";
+        out += String(minute);
+        return out;
+    }
 };
 
 struct schedule_repeat_t {
@@ -55,6 +66,10 @@ struct schedule_repeat_t {
     bool friday;
     bool saturday;
     bool sunday;
+
+    String toString() const {
+        return String(monday) + String(tuesday) + String(wednesday) + String(thursday) + String(friday) + String(saturday) + String(sunday);
+    }
 };
 
 template<typename T = ScheduleTaskArgsBase>
@@ -695,13 +710,16 @@ public:
             tasksArrayStr += String(task.id) + "|";
             tasksArrayStr += String(task.time.hour) + "|";
             tasksArrayStr += String(task.time.minute) + "|";
-            tasksArrayStr += task.repeat.monday ? "1" : "0";
-            tasksArrayStr += task.repeat.tuesday ? "1" : "0";
-            tasksArrayStr += task.repeat.wednesday ? "1" : "0";
-            tasksArrayStr += task.repeat.thursday ? "1" : "0";
-            tasksArrayStr += task.repeat.friday ? "1" : "0";
-            tasksArrayStr += task.repeat.saturday ? "1" : "0";
-            tasksArrayStr += String(task.repeat.sunday ? "1" : "0") + "|";
+
+//            tasksArrayStr += task.repeat.monday ? "1" : "0";
+//            tasksArrayStr += task.repeat.tuesday ? "1" : "0";
+//            tasksArrayStr += task.repeat.wednesday ? "1" : "0";
+//            tasksArrayStr += task.repeat.thursday ? "1" : "0";
+//            tasksArrayStr += task.repeat.friday ? "1" : "0";
+//            tasksArrayStr += task.repeat.saturday ? "1" : "0";
+//            tasksArrayStr += String(task.repeat.sunday ? "1" : "0") + "|";
+            tasksArrayStr += task.repeat.toString() + "|";
+
             tasksArrayStr += task.args->toString() + "|";
             tasksArrayStr += String(task.enabled ? "1" : "0") + "|";
             tasksArrayStr += String(task.executed ? "1" : "0") + "\",";

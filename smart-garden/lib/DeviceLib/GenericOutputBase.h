@@ -66,16 +66,30 @@ public:
     ~GenericOutputBase();
 
     /**
-     * @brief Set powe to ON
-     *
+     * @brief Set power to ON
+     * @param force force to set power
      */
-    virtual void on();
+    virtual void on(bool force);
+
+    /**
+     * @brief Set power to ON
+     */
+    virtual void on() {
+        on(false);
+    }
 
     /**
      * @brief Set power to OFF
-     *
+     * @param force force to set power
      */
-    virtual void off();
+    virtual void off(bool force);
+
+    /**
+     * @brief Set power to OFF
+     */
+    virtual void off() {
+        off(false);
+    }
 
     /**
      * @brief Toggle power

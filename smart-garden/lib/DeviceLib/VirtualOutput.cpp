@@ -4,7 +4,7 @@
 
 #include "VirtualOutput.h"
 
-void VirtualOutput::on() {
+void VirtualOutput::on(bool force) {
     if (_pOnDelay > 0 && _pState != stdGenericOutput::ON)
     {
         _previousMillis = millis();
@@ -13,7 +13,7 @@ void VirtualOutput::on() {
     }
     _pState = stdGenericOutput::ON;
 
-    if (_state) return;
+    if (!force && _state) return;
     _state = true;
     _previousMillis = millis();
     if (_onFunction != nullptr) {
@@ -31,9 +31,9 @@ void VirtualOutput::on() {
 #endif
 }
 
-void VirtualOutput::off() {
+void VirtualOutput::off(bool force) {
     _pState = stdGenericOutput::OFF;
-    if (!_state) return;
+    if (!force && !_state) return;
     _state = false;
     if (_offFunction != nullptr) {
         _offFunction();

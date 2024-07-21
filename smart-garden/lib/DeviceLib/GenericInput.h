@@ -9,15 +9,10 @@
 #include <vector>
 
 struct GI_hold_state_cb_t {
+    bool state;
     uint32_t time;
     std::function<void()> callback;
     bool executed;
-};
-
-struct GI_hold_state_t {
-    bool state;
-    uint32_t lastTime;
-    std::vector<GI_hold_state_cb_t> callbacks;
 };
 
 class GenericInput {
@@ -148,29 +143,39 @@ public:
         _onInactiveCB = std::move(cb);
     }
 
+    /**
+     * @brief Set the callback function when hold state
+     * @param state state to hold
+     * @param time time to hold in milliseconds
+     * @param callback callback function
+     */
     void onHoldState(bool state, uint32_t time, std::function<void()> callback) {
+        _allHoldCBExecuted = false;
+
         // Callback list is empty
-        if (_holdStateCBs[state].callbacks.empty()) {
-            _holdStateCBs[state].callbacks.push_back({time, std::move(callback), false});
+        if (_holdStateCBs.empty()) {
+            _holdStateCBs.push_back({state, time, std::move(callback), false});
             return;
         }
 
-        // Existing callback for this time
-        for (auto &cb : _holdStateCBs[state].callbacks) {
-            if (cb.time == time) {
+        // Existing callback for this state and time -> update callback
+        for (auto &cb : _holdStateCBs) {
+            if (cb.state == state && cb.time == time) {
                 cb.callback = std::move(callback);
                 return;
             }
         }
 
         // New callback
-        _holdStateCBs[state].callbacks.push_back({time, std::move(callback), false});
+        _holdStateCBs.push_back({state, time, std::move(callback), false});
     }
 
     bool deleteHoldState(bool state, uint32_t time) {
-        for (auto it = _holdStateCBs[state].callbacks.begin(); it != _holdStateCBs[state].callbacks.end(); ++it) {
-            if (it->time == time) {
-                _holdStateCBs[state].callbacks.erase(it);
+        if (_holdStateCBs.empty())
+            return false;
+        for (auto it = _holdStateCBs.begin(); it != _holdStateCBs.end(); ++it) {
+            if (it->state == state && it->time == time) {
+                _holdStateCBs.erase(it);
                 return true;
             }
         }
@@ -194,10 +199,11 @@ protected:
     std::function<void()> _onChangeCB = nullptr;
     std::function<void()> _onActiveCB = nullptr;
     std::function<void()> _onInactiveCB = nullptr;
-    GI_hold_state_t _holdStateCBs[2] = {
-        {false, 0},
-        {true, 0}
-    };
+
+    uint32_t _lastActiveTime = 0;
+    uint32_t _lastInactiveTime = 0;
+    bool _allHoldCBExecuted = false;
+    std::vector<GI_hold_state_cb_t> _holdStateCBs;
 };
 
 

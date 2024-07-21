@@ -60,28 +60,43 @@ public:
 
     /**
      * @brief set power on
-     *
+     * @param force true to force power on
      */
-    void on() override;
+    void on(bool force) override;
 
     /**
-     * @brief set power on for a duration. Only works once
-     *
-     * @param duration
+     * @brief set power on
      */
-    void on(uint32_t duration);
+    void on() override {
+        on(false);
+    }
+
+    /**
+     * @brief set power on for a duration. Only works once, the next time on with default duration
+     * @param duration milliseconds
+     * @param force true to force power on
+     */
+    void onOnce(uint32_t duration, bool force = false);
 
     /**
      * @brief set power on with percentage timing (0-100%) based on the duration
      * @param percentage 1-100
+     * @param force true to force power on
      */
-    void onPercentage(uint8_t percentage);
+    void onPercentage(uint8_t percentage, bool force = false);
 
     /**
      * @brief set power off immediately
-     *
+     * @param force true to force power off
      */
-    void off() override;
+    void off(bool force) override;
+
+    /**
+     * @brief set power off
+     */
+    void off() override {
+        off(false);
+    }
 
     /**
      * @brief set a delay before power on. Set to 0 to disable
@@ -124,6 +139,29 @@ public:
      * @return uint32_t
      */
     uint32_t getPowerOnDelay() const;
+
+    /**
+     * @brief Get the Remaining Time in milliseconds
+     * @return
+     */
+    uint32_t getRemainingTime() const {
+        if (_state) {
+            uint32_t t = millis() - _previousMillis;
+            if (t < _duration)
+                return _duration - t;
+            return 0;
+        }
+        return 0;
+    }
+
+    String getRemainingTimeString() const {
+        uint32_t remaining = getRemainingTime();
+        if (remaining == 0)
+            return "00:00";
+        uint32_t minutes = remaining / 60000;
+        uint32_t seconds = (remaining % 60000) / 1000;
+        return String(minutes) + ":" + (seconds < 10 ? "0" : "") + String(seconds);
+    }
 
     /**
      * @brief Set the callback function to be called when power is turned off automatically
