@@ -67,10 +67,8 @@ bool stdGenericOutput::GenericOutputBase::readLastState() {
     }
     _state = false;
     setLastState();
-    return false;
-#else
-    return false;
 #endif
+    return false;
 }
 
 void stdGenericOutput::GenericOutputBase::setLastState() {

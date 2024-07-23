@@ -101,10 +101,14 @@ Scheduler<WateringTaskArgs> scheduler(WateringTaskExec);
 #if defined(ENABLE_LOGGER)
 
 #include "SLog.h"
-#include "SPIFFS.h"
 
 SLog logger(BOT_TOKEN, CHAT_ID);
 //SLog logger;
+
+struct {
+    int8_t timer = -1;
+    uint16_t msgId = 0;
+} update_valve_state;
 
 #endif // ENABLE_LOGGER
 
@@ -204,7 +208,7 @@ WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType type, v
                 }
 #if defined(ENABLE_LOGGER)
                 if (cmd != "") {
-                    logger.log("VALVE_" + message.substring(6), "WEB", client->remoteIP().toString());
+                    logger.log("VALVE_" + cmd, "WEB", client->remoteIP().toString());
                 }
 #endif
             }
@@ -236,13 +240,14 @@ void syncRTDB() {
     JsonWriter writer;
     object_t o1, o2, o3, o4, o5, o6, o7, json;
     writer.create(o1, "valve", Valve.getState());
-    writer.create(o2, "r1", ValvePower.getState());
-    writer.create(o3, "r2", ValveDirection.getState());
-    writer.create(o4, "r3", PumpPower.getState());
-    writer.create(o5, "r4", ACPower.getState());
+//    writer.create(o2, "r1", ValvePower.getState());
+//    writer.create(o3, "r2", ValveDirection.getState());
+//    writer.create(o4, "r3", PumpPower.getState());
+//    writer.create(o5, "r4", ACPower.getState());
     writer.create(o6, "water_leak", WaterLeak.getState());
     writer.create(o7, "restart", false);
-    writer.join(json, 7, o1, o2, o3, o4, o5, o6, o7);
+//    writer.join(json, 7, o1, o2, o3, o4, o5, o6, o7);
+    writer.join(json, 3, o1, o6, o7);
     FirebaseIOT.update("/data", json);
 }
 
@@ -407,27 +412,27 @@ void setup() {
         if (!Valve.getState()) return; // ignore if not open
 
 #if defined(ENABLE_LOGGER)
-        static int update_valve_state_timer;
-        static uint16_t update_valve_state_msgId = 0;
-        if (update_valve_state_timer > -1) {
-            timer.deleteTimer(update_valve_state_timer);
+        if (update_valve_state.timer > -1) {
+            timer.deleteTimer(update_valve_state.timer);
+            update_valve_state.msgId = 0;
         }
         String mes = "*🌱 Đã bắt đầu tưới nước*\nThời gian còn lại: `" + Valve.getRemainingTimeString() + "`";
         logger.logTele(mes, [](uint16_t msgId) {
-            update_valve_state_msgId = msgId;
+            update_valve_state.msgId = msgId;
         });
-        update_valve_state_timer = timer.setInterval(10000L, []() {
+        update_valve_state.timer = timer.setInterval(10000L, []() {
             if (!Valve.getState()) {
-                logger.logTeleEdit(update_valve_state_msgId, "🌱 Đã kết thúc tưới nước");
-                timer.deleteTimer(update_valve_state_timer);
-                Serial.printf("> Timer deleted: %d\n", update_valve_state_timer);
+                logger.logTeleEdit(update_valve_state.msgId, "🌱 Đã kết thúc tưới nước");
+                timer.deleteTimer(update_valve_state.timer);
+                update_valve_state.timer = -1;
+                update_valve_state.msgId = 0;
             } else {
                 logger.logTeleEdit(
-                        update_valve_state_msgId,
+                        update_valve_state.msgId,
                         "*🌱 Đã bắt đầu tưới nước*\nThời gian còn lại: `" + Valve.getRemainingTimeString() + "`",
                         [](uint16_t msgId) {
-                            if (!update_valve_state_msgId)
-                                update_valve_state_msgId = msgId;
+                            if (!update_valve_state.msgId)
+                                update_valve_state.msgId = msgId;
                         });
             }
         });
@@ -485,9 +490,11 @@ void setup() {
 
     server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request) {
         responseSuccess(request, "Reseting...");
-#if defined(SPIFFS_H) && (defined(ENABLE_LOGGER) || defined(ENABLE_SCHEDULER))
+        delay(1000);
+#if defined(_SPIFFS_H_) && (defined(ENABLE_LOGGER) || defined(ENABLE_SCHEDULER))
         SPIFFS.format();
         SPIFFS.end();
+        delay(2000);
 #endif // SPIFFS_H
         ESP.restart();
     });
@@ -622,24 +629,6 @@ void setup() {
     });
 #endif // ENABLE_SCHEDULER
 
-
-    server.on("/last-states", [](AsyncWebServerRequest *req) {
-        if (req->hasParam("clear")) {
-            SPIFFS.remove("/gpiols");
-            req->send(200, "text/plain", "Cleared");
-            return;
-        }
-        File file = SPIFFS.open("/gpiols", "r");
-        if (!file) {
-            req->send(404, "text/plain", "Not found file");
-            return;
-        }
-        String size = "Size: " + String(file.size()) + "Bytes\n----------\n";
-        String d = file.readString();
-        file.close();
-        req->send(200, "text/plain", size + d);
-    });
-
     /* ===================== */
 
     ws.onEvent(WSHandler);
@@ -671,10 +660,10 @@ void setup() {
     RTDBObj->prefixPath = FirebaseIOT.DB_DEVICE_PATH + "/data";
 
     Valve.attachDatabase(RTDBObj, "/valve", printResult);
-    ValvePower.attachDatabase(RTDBObj, "/r1", printResult);
-    ValveDirection.attachDatabase(RTDBObj, "/r2", printResult);
-    PumpPower.attachDatabase(RTDBObj, "/r3", printResult);
-    ACPower.attachDatabase(RTDBObj, "/r4", printResult);
+//    ValvePower.attachDatabase(RTDBObj, "/r1", printResult);
+//    ValveDirection.attachDatabase(RTDBObj, "/r2", printResult);
+//    PumpPower.attachDatabase(RTDBObj, "/r3", printResult);
+//    ACPower.attachDatabase(RTDBObj, "/r4", printResult);
 
 #if defined(ENABLE_SCHEDULER)
     scheduler.attachDatabase(RTDBObj);
@@ -713,10 +702,10 @@ void setup() {
             } else if (RTDB.dataPath() == "/" && RTDB.type() == realtime_database_data_type_json) {
                 JSON::JsonParser parser(RTDB.to<String>());
                 Valve.syncState(parser.get<bool>("valve"));
-                ValvePower.syncState(parser.get<bool>("r1"));
-                ValveDirection.syncState(parser.get<bool>("r2"));
-                PumpPower.syncState(parser.get<bool>("r3"));
-                ACPower.syncState(parser.get<bool>("r4"));
+//                ValvePower.syncState(parser.get<bool>("r1"));
+//                ValveDirection.syncState(parser.get<bool>("r2"));
+//                PumpPower.syncState(parser.get<bool>("r3"));
+//                ACPower.syncState(parser.get<bool>("r4"));
                 notifyState();
 
                 if (parser.get<bool>("water_leak") != WaterLeak.getState()) {
@@ -735,27 +724,30 @@ void setup() {
                 }
             } else if (RTDB.dataPath() == "/water_leak" && RTDB.to<bool>() != WaterLeak.getState()) {
                 FirebaseIOT.set("/data/water_leak", WaterLeak.getState());
-            } else {
-                if (RTDB.dataPath() == "/r3") {
-                    PumpPower.setState(RTDB.to<bool>());
-                } else if (RTDB.dataPath() == "/valve") {
-                    Valve.setState(RTDB.to<bool>());
-                } else if (millis() > acceptedCallbackMillis) {
-                    if (RTDB.dataPath() == "/r1") {
-                        ValvePower.setState(RTDB.to<bool>());
-                    } else if (RTDB.dataPath() == "/r2") {
-                        ValveDirection.setState(RTDB.to<bool>());
-                    } else if (RTDB.dataPath() == "/r4") {
-                        ACPower.setState(RTDB.to<bool>());
-                    }
-                }
+            } else if (RTDB.dataPath() == "/valve") {
+                Valve.setState(RTDB.to<bool>());
             }
+//            else {
+//                if (RTDB.dataPath() == "/r3") {
+//                    PumpPower.setState(RTDB.to<bool>());
+//                } else if (RTDB.dataPath() == "/valve") {
+//                    Valve.setState(RTDB.to<bool>());
+//                } else if (millis() > acceptedCallbackMillis) {
+//                    if (RTDB.dataPath() == "/r1") {
+//                        ValvePower.setState(RTDB.to<bool>());
+//                    } else if (RTDB.dataPath() == "/r2") {
+//                        ValveDirection.setState(RTDB.to<bool>());
+//                    } else if (RTDB.dataPath() == "/r4") {
+//                        ACPower.setState(RTDB.to<bool>());
+//                    }
+//                }
+//            }
 
             notifyState();
         });
 
         // Erase old Firmware and update new
-        checkOTA();
+        timer.setTimeout(120000L, checkOTA); // Check OTA after 2 minutes
 
     }); // onFirstConnected
 
