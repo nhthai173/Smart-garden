@@ -1,7 +1,7 @@
 
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION 232
+  #define FIRMWARE_VERSION 374
 #endif
 #ifndef DEVICE_VERSION
-  #define DEVICE_VERSION "0.3.232"
+  #define DEVICE_VERSION "0.3.374"
 #endif

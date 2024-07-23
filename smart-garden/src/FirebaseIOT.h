@@ -22,12 +22,6 @@ AsyncClientClass aClient(ssl_client, getNetwork(fbNetwork));
 RealtimeDatabase Database;
 AsyncResult aResult_no_callback;
 
-#ifdef USE_STREAM
-
-WiFiClientSecure stream_ssl_client;
-AsyncClientClass streamClient(stream_ssl_client, getNetwork(fbNetwork));
-
-#endif // USE_STREAM
 
 #ifdef FB_PRINT_RESULT
 
@@ -69,13 +63,28 @@ void printResult(AsyncResult &aResult) {}
 #endif // FB_PRINT_RESULT
 
 
+#ifdef USE_STREAM
+
+WiFiClientSecure stream_ssl_client;
+AsyncClientClass streamClient(stream_ssl_client, getNetwork(fbNetwork));
+
+struct {
+    bool set = false;
+    unsigned long reconnect_bypass_timeout = 8000;
+    AsyncResultCallback user_callback = nullptr;
+} stream_callback;
+
+#endif // USE_STREAM
+
+
 class FirebaseIOTClass {
 
 private:
-    bool _firstConnected = false;
+    unsigned long _firstConnectedMs = 0; // millis when first connected
     std::function<void()> _firstConnectedCB = nullptr;
 
 public:
+    // Path to device in database
     String DB_DEVICE_PATH;
 
     static void begin(const String &api, const String &db_url, const String &email, const String &password) {
@@ -106,15 +115,21 @@ public:
         app.loop();
         Database.loop();
 
-        if (app.ready() && !_firstConnected) {
-            _firstConnected = true;
-
+        if (app.ready() && _firstConnectedMs == 0) {
+            _firstConnectedMs = millis();
             DB_DEVICE_PATH = app.getUid() + "/" + (String) ESP.getEfuseMac();
-
             if (_firstConnectedCB) {
                 _firstConnectedCB();
             }
         }
+    }
+
+    /**
+     * @brief Get the first connected time in milliseconds
+     * @return
+     */
+    unsigned long firstConnected() const {
+        return _firstConnectedMs;
     }
 
     template<typename T = object_t>
@@ -151,8 +166,34 @@ public:
 
 #ifdef USE_STREAM
 
+    /**
+     * @brief Set stream for a path
+     * @param path the sub path to stream
+     * @param callback the callback function to handle the stream data
+     * @param uid the unique id for the task
+     * @return bool true if stream is set successfully, false if stream is already set
+     *
+     * Change the stream_bypass_timeout_from_reconnect to change the timeout to bypass the stream data after reconnect
+     */
     bool setStream(const String &path, AsyncResultCallback callback, const String &uid = "streamTask") const {
-        Database.get(streamClient, DB_DEVICE_PATH + path, callback, true, uid);
+        if (stream_callback.set) {
+            Serial.println("Stream is already set. Only one stream is allowed");
+            return false;
+        }
+        stream_callback.set = true;
+        stream_callback.user_callback = callback;
+        Database.get(streamClient, DB_DEVICE_PATH + path, [](AsyncResult &result) {
+            printResult(result);
+            unsigned long ls = streamClient.networkLastSeen();
+            Serial.printf("Time from reconnect: %lu\n", millis() - ls);
+            Serial.printf("Callback available: %d\n", stream_callback.user_callback != nullptr);
+            Serial.printf("Reconnect bypass: %d\n", ls == 0 || millis() > ls + stream_callback.reconnect_bypass_timeout);
+            if (stream_callback.user_callback != nullptr) {
+                if (ls == 0 || millis() > ls + stream_callback.reconnect_bypass_timeout) {
+                    (*stream_callback.user_callback)(result);
+                }
+            }
+        }, true, uid);
         return true;
     }
 

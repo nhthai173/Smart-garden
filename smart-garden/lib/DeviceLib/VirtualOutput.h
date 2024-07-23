@@ -5,8 +5,6 @@
 #ifndef VIRTUALOUTPUT_H
 #define VIRTUALOUTPUT_H
 
-#include <utility>
-
 #include "GenericOutput.h"
 
 class VirtualOutput : public GenericOutput {
@@ -30,12 +28,29 @@ public:
      * @brief Construct a new Virtual Output object with auto off feature and duration
      * @param duration duration to turn off after power is on in milliseconds
      */
-    explicit VirtualOutput(unsigned long duration) : GenericOutput() {
+    explicit VirtualOutput(uint8_t deviceId, stdGenericOutput::startup_state_t startupState, uint32_t duration = 0) : GenericOutput() {
+        _pin = deviceId;
+        _startUpState = startupState;
         _autoOffEnabled = false;
         _duration = duration;
         if (duration > 0) {
             _autoOffEnabled = true;
         }
+    }
+
+    ~VirtualOutput() {
+        _onFunction = nullptr;
+        _offFunction = nullptr;
+    }
+
+    /**
+     * @brief Set the start up state
+     * @param deviceId 100 - 199
+     * @param startupState
+     */
+    void setStartUpState(uint8_t deviceId, stdGenericOutput::startup_state_t startupState) {
+        _pin = deviceId;
+        _startUpState = startupState;
     }
 
     /**
@@ -108,12 +123,32 @@ public:
         _offStateString = offStateString;
     }
 
+    /**
+     * @brief Set the function to execute when power is on
+     * @param onFunction
+     */
     void setOnFunction(std::function<void()> onFunction) {
         _onFunction = std::move(onFunction);
     }
 
+    /**
+     * @brief Set the function to execute when power is off
+     * @param offFunction
+     */
     void setOffFunction(std::function<void()> offFunction) {
         _offFunction = std::move(offFunction);
+    }
+
+    /**
+     * @brief Set the state from last state (if used)
+     */
+    void init() override {
+        GenericOutput::init();
+        if (_state && _onFunction) {
+            _onFunction();
+        } else if (!_state && _offFunction) {
+            _offFunction();
+        }
     }
 
 protected:

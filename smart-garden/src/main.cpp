@@ -78,15 +78,13 @@ fbrtdb_object *RTDBObj;
 //#include "TimeHelper.h"
 //TimeHelper Time;
 
-GenericOutput ValvePower(19, OUTPUT_ACTIVE_STATE, 8000L /* 8 sec */); // R1
-GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE); // R2
-GenericOutput PumpPower(16, OUTPUT_ACTIVE_STATE); // R3
-GenericOutput ACPower(4, OUTPUT_ACTIVE_STATE, 180000L /* 3 min */); // R4
-VirtualOutput Valve(60000L /* 1 min */);
+GenericOutput ValvePower(19, OUTPUT_ACTIVE_STATE, stdGenericOutput::START_UP_OFF, 8000L /* 8 sec */); // R1
+GenericOutput ValveDirection(18, OUTPUT_ACTIVE_STATE, stdGenericOutput::START_UP_OFF); // R2
+GenericOutput PumpPower(16, OUTPUT_ACTIVE_STATE, stdGenericOutput::START_UP_OFF); // R3
+GenericOutput ACPower(4, OUTPUT_ACTIVE_STATE, stdGenericOutput::START_UP_OFF, 180000L /* 3 min */); // R4
+VirtualOutput Valve(100, stdGenericOutput::START_UP_LAST_STATE, 60000L /* 1 min */);
 GenericInput WaterLeak(34, INPUT_PULLUP, LOW);
 VoltageReader PowerVoltage(32, 10.0, 3.33, 0.3, 10.5, 13.5);
-
-GenericOutput led(LED_BUILTIN, OUTPUT_ACTIVE_STATE);
 
 SimpleTimer timer;
 
@@ -103,6 +101,7 @@ Scheduler<WateringTaskArgs> scheduler(WateringTaskExec);
 #if defined(ENABLE_LOGGER)
 
 #include "SLog.h"
+#include "SPIFFS.h"
 
 SLog logger(BOT_TOKEN, CHAT_ID);
 //SLog logger;
@@ -270,22 +269,24 @@ void updateOTA() {
 }
 
 void checkOTA() {
+    Serial.println("Checking firmware");
     FirebaseIOT.get("/firmware/version", [](AsyncResult &res) {
         if (res.available()) {
             auto &RTDB = res.to<RealtimeDatabaseResult>();
             if (RTDB.type() == realtime_database_data_type_integer) {
                 if (RTDB.to<int>() <= FIRMWARE_VERSION) {
-                    Serial.println("The current firmware is up to date");
+                    Serial.println("> The current firmware is up to date");
                     timer.setTimeout(100L, []() {
                         FirebaseIOT.remove("/firmware");
                         FirebaseIOT.set("/data/restart", false);
                     });
                 } else {
-                    Serial.printf("New firmware version: %d\n", RTDB.to<int>());
+                    Serial.printf("> New firmware version: %d\n", RTDB.to<int>());
+                    Serial.println("> Starting OTA...");
                     timer.setTimeout(100L, updateOTA);
                 }
             } else {
-                Serial.println("Invalid firmware version");
+                Serial.println("> No firmware version found");
                 timer.setTimeout(100L, []() {
                     FirebaseIOT.set("/data/restart", false);
                 });
@@ -362,7 +363,6 @@ void setup() {
 //    logger.setTeleLogPrefix("🌱 Vườn cây");
 
     timer.setInterval(1000L, []() {
-        led.toggle();
         Serial.print(".");
     });
 
@@ -384,10 +384,17 @@ void setup() {
     Valve.setOffStateString("CLOSE");
 
     Valve.setOnFunction([]() {
-        ValveDirection.off();
-        ACPower.on();
-        ValvePower.on();
-        PumpPower.on();
+        if (WaterLeak.getState()) {
+            Valve.close(true);
+#if defined(ENABLE_LOGGER)
+            logger.logTele("🚨 Không thể mở van vì phát hiện ngập nước");
+#endif
+        } else {
+            ValveDirection.off();
+            ACPower.on();
+            ValvePower.on();
+            PumpPower.on();
+        }
     });
     Valve.setOffFunction([]() {
         ValveDirection.on();
@@ -397,19 +404,32 @@ void setup() {
     });
     Valve.onPowerChanged(notifyState);
     Valve.onPowerOn([]() {
+        if (!Valve.getState()) return; // ignore if not open
+
 #if defined(ENABLE_LOGGER)
+        static int update_valve_state_timer;
+        static uint16_t update_valve_state_msgId = 0;
+        if (update_valve_state_timer > -1) {
+            timer.deleteTimer(update_valve_state_timer);
+        }
         String mes = "*🌱 Đã bắt đầu tưới nước*\nThời gian còn lại: `" + Valve.getRemainingTimeString() + "`";
-        static int update_valve_state_timer = -1;
         logger.logTele(mes, [](uint16_t msgId) {
-            update_valve_state_timer = timer.setInterval(5000L, [msgId]() {
-                if (!Valve.getState()) {
-                    logger.logTeleEdit(msgId, "🌱 Đã kết thúc tưới nước");
-                    timer.deleteTimer(update_valve_state_timer);
-                } else {
-                    logger.logTeleEdit(msgId, "*🌱 Đã bắt đầu tưới nước*\nThời gian còn lại: `" +
-                                              Valve.getRemainingTimeString() + "`");
-                }
-            });
+            update_valve_state_msgId = msgId;
+        });
+        update_valve_state_timer = timer.setInterval(10000L, []() {
+            if (!Valve.getState()) {
+                logger.logTeleEdit(update_valve_state_msgId, "🌱 Đã kết thúc tưới nước");
+                timer.deleteTimer(update_valve_state_timer);
+                Serial.printf("> Timer deleted: %d\n", update_valve_state_timer);
+            } else {
+                logger.logTeleEdit(
+                        update_valve_state_msgId,
+                        "*🌱 Đã bắt đầu tưới nước*\nThời gian còn lại: `" + Valve.getRemainingTimeString() + "`",
+                        [](uint16_t msgId) {
+                            if (!update_valve_state_msgId)
+                                update_valve_state_msgId = msgId;
+                        });
+            }
         });
 #endif
     });
@@ -417,7 +437,7 @@ void setup() {
 #if defined(ENABLE_LOGGER)
         logger.log("VALVE_CLOSE", "AUTO_TIMEOUT", "");
         logger.logTele("🌱 Đã tự động tắt nước");
-#endif
+#endif // ENABLE_LOGGER
     });
 
     PumpPower.setPowerOnDelay(8000L);
@@ -436,13 +456,13 @@ void setup() {
         logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
         logger.log("VALVE_CLOSE", "WATER_LEAK", "");
         logger.logTele("🚨 Phát hiện ngập nước");
-#endif
+#endif // ENABLE_LOGGER
     });
     WaterLeak.onHoldState(false, 5000L, []() {
 #if defined(ENABLE_LOGGER)
         logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
         logger.logTele("🚰 Nước đã hết ngập");
-#endif
+#endif // ENABLE_LOGGER
     });
 
 #if defined(ENABLE_SERVER)
@@ -450,7 +470,7 @@ void setup() {
 
 #if defined(ENABLE_WEB_INTERFACE)
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) { request->send(200, "text/html", MAINPAGE); });
-#endif
+#endif // ENABLE_WEB_INTERFACE
 
     server.on("/info", HTTP_ANY, [](AsyncWebServerRequest *request) {
         request->send(200, "application/json", getInfo());
@@ -468,7 +488,7 @@ void setup() {
 #if defined(SPIFFS_H) && (defined(ENABLE_LOGGER) || defined(ENABLE_SCHEDULER))
         SPIFFS.format();
         SPIFFS.end();
-#endif
+#endif // SPIFFS_H
         ESP.restart();
     });
 
@@ -482,12 +502,12 @@ void setup() {
             Valve.close();
 #if defined(ENABLE_LOGGER)
             logger.log("VALVE_CLOSE", "API", request->client()->remoteIP().toString());
-#endif
+#endif // ENABLE_LOGGER
         } else {
             Valve.open();
 #if defined(ENABLE_LOGGER)
             logger.log("VALVE_OPEN", "API", request->client()->remoteIP().toString());
-#endif
+#endif // ENABLE_LOGGER
         }
         responseSuccess(request, "OK");
     });
@@ -496,7 +516,7 @@ void setup() {
     server.on("/logs", HTTP_GET, [](AsyncWebServerRequest *request) {
         responseSuccess(request, logger.getLogs());
     });
-#endif
+#endif // ENABLE_LOGGER
 
 #if defined(ENABLE_SCHEDULER)
     server.on("/schedules", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -506,7 +526,7 @@ void setup() {
         String ret = "Object task count: " + String(scheduler.getTaskCount()) + "\n";
         ret += "Read from file:\n" + scheduler.getString();
         request->send(200, "text/plain", ret);
-#endif
+#endif // ENABLE_NFIREBASE
     });
 
     server.on("/add-schedule", [](AsyncWebServerRequest *request) {
@@ -580,7 +600,7 @@ void setup() {
             log += "Mức mở van: " + String(task.args->valveOpenLevel * 10) + "%\n";
             log += "Lặp lại: " + task.repeat.toString() + "\n";
             logger.logTele(log);
-#endif
+#endif // ENABLE_LOGGER
         } else {
             delete task.args;
             responseError(request, "Failed to add schedule");
@@ -598,16 +618,34 @@ void setup() {
         responseSuccess(request, scheduler.removeTask(id) ? "Schedule removed" : "Schedule not found");
 #if defined(ENABLE_LOGGER)
         logger.logTele("🌱 Đã xóa 1 hẹn giờ");
-#endif
+#endif // ENABLE_LOGGER
     });
-#endif
+#endif // ENABLE_SCHEDULER
+
+
+    server.on("/last-states", [](AsyncWebServerRequest *req) {
+        if (req->hasParam("clear")) {
+            SPIFFS.remove("/gpiols");
+            req->send(200, "text/plain", "Cleared");
+            return;
+        }
+        File file = SPIFFS.open("/gpiols", "r");
+        if (!file) {
+            req->send(404, "text/plain", "Not found file");
+            return;
+        }
+        String size = "Size: " + String(file.size()) + "Bytes\n----------\n";
+        String d = file.readString();
+        file.close();
+        req->send(200, "text/plain", size + d);
+    });
 
     /* ===================== */
 
     ws.onEvent(WSHandler);
     server.addHandler(&ws);
     server.begin();
-#endif
+#endif // ENABLE_SERVER
 
 #if defined(ENABLE_LOGGER)
     logger.clearOldLogs();
@@ -632,11 +670,11 @@ void setup() {
     // <user_id>/<device_id>/data
     RTDBObj->prefixPath = FirebaseIOT.DB_DEVICE_PATH + "/data";
 
-    Valve.attachDatabase(RTDBObj, "/valve", stdGenericOutput::START_UP_OFF, printResult);
-    ValvePower.attachDatabase(RTDBObj, "/r1", stdGenericOutput::START_UP_OFF, printResult);
-    ValveDirection.attachDatabase(RTDBObj, "/r2", stdGenericOutput::START_UP_OFF, printResult);
-    PumpPower.attachDatabase(RTDBObj, "/r3", stdGenericOutput::START_UP_OFF, printResult);
-    ACPower.attachDatabase(RTDBObj, "/r4", stdGenericOutput::START_UP_OFF, printResult);
+    Valve.attachDatabase(RTDBObj, "/valve", printResult);
+    ValvePower.attachDatabase(RTDBObj, "/r1", printResult);
+    ValveDirection.attachDatabase(RTDBObj, "/r2", printResult);
+    PumpPower.attachDatabase(RTDBObj, "/r3", printResult);
+    ACPower.attachDatabase(RTDBObj, "/r4", printResult);
 
 #if defined(ENABLE_SCHEDULER)
     scheduler.attachDatabase(RTDBObj);
@@ -666,7 +704,7 @@ void setup() {
 
         // Set stream
         FirebaseIOT.setStream("/data", [](AsyncResult &res) {
-            printResult(res);
+            Serial.println(">> Stream callback <<");
 
             auto &RTDB = res.to<RealtimeDatabaseResult>();
             // First time connect -> intit data
@@ -674,11 +712,11 @@ void setup() {
                 syncRTDB();
             } else if (RTDB.dataPath() == "/" && RTDB.type() == realtime_database_data_type_json) {
                 JSON::JsonParser parser(RTDB.to<String>());
-                Valve.setState(parser.get<bool>("valve"));
-                ValvePower.setState(parser.get<bool>("r1"));
-                ValveDirection.setState(parser.get<bool>("r2"));
-                PumpPower.setState(parser.get<bool>("r3"));
-                ACPower.setState(parser.get<bool>("r4"));
+                Valve.syncState(parser.get<bool>("valve"));
+                ValvePower.syncState(parser.get<bool>("r1"));
+                ValveDirection.syncState(parser.get<bool>("r2"));
+                PumpPower.syncState(parser.get<bool>("r3"));
+                ACPower.syncState(parser.get<bool>("r4"));
                 notifyState();
 
                 if (parser.get<bool>("water_leak") != WaterLeak.getState()) {

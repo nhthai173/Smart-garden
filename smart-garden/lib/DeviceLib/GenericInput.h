@@ -8,6 +8,14 @@
 #include <Arduino.h>
 #include <vector>
 
+#define DEBUG_GENERIC_INPUT
+
+#ifdef DEBUG_GENERIC_INPUT
+#define GI_DEBUG_PRINT(...) Serial.printf(__VA_ARGS__)
+#else
+#define GI_DEBUG_PRINT(...)
+#endif // DEBUG_GENERIC_INPUT
+
 struct GI_hold_state_cb_t {
     bool state;
     uint32_t time;
@@ -151,10 +159,12 @@ public:
      */
     void onHoldState(bool state, uint32_t time, std::function<void()> callback) {
         _allHoldCBExecuted = false;
+        bool currentState = _lastState == _activeState;
 
         // Callback list is empty
         if (_holdStateCBs.empty()) {
-            _holdStateCBs.push_back({state, time, std::move(callback), false});
+            // executed = true if current state is the same as the last state to prevent callback executed immediately
+            _holdStateCBs.push_back({state, time, std::move(callback), state == currentState});
             return;
         }
 
@@ -162,12 +172,13 @@ public:
         for (auto &cb : _holdStateCBs) {
             if (cb.state == state && cb.time == time) {
                 cb.callback = std::move(callback);
+                cb.executed = state == currentState;
                 return;
             }
         }
 
         // New callback
-        _holdStateCBs.push_back({state, time, std::move(callback), false});
+        _holdStateCBs.push_back({state, time, std::move(callback), state == currentState});
     }
 
     bool deleteHoldState(bool state, uint32_t time) {

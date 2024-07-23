@@ -21,9 +21,41 @@
 
 #endif // __has_include(<FirebaseClient.h>)
 
+// Use FS to store last state, comment this line to disable
+#define USE_LAST_STATE
+
+#if defined(USE_LAST_STATE)
+#if defined(ESP8266)
+#include <LittleFS.h>
+#define GO_FS LittleFS
+#elif defined(ESP32)
+
+#include <SPIFFS.h>
+
+#define GO_FS SPIFFS
+#endif
+#endif // USE_LAST_STATE
+
+
+//template<typename T = std::function<void()>>
+//void start_callback(T cb, const char *name = "IOTask", uint32_t stack = 2048, uint8_t priority = 1) {
+//    if (cb) {
+//        Serial.printf("> Set callback: %s\n", name);
+//        TaskHandle_t task = nullptr;
+//        xTaskCreate([](void *p) {
+//            auto *f = static_cast<T *>(p);
+//            (*f)();
+//            vTaskDelete(nullptr);
+//        }, name, stack, &cb, priority, &task);
+//        configASSERT(task);
+//    }
+//}
+
+
 namespace stdGenericOutput {
 
     typedef enum {
+        START_UP_NONE = 0xFF,
         START_UP_OFF = 0x00,
         START_UP_ON = 0x01,
         START_UP_LAST_STATE = 0x02,
@@ -39,7 +71,7 @@ class stdGenericOutput::GenericOutputBase {
 
 public:
 
-    GenericOutputBase() = default;
+    GenericOutputBase();
 
     /**
      * @brief Construct a new GenericOutputBase object
@@ -47,7 +79,7 @@ public:
      * @param pin pin number
      * @param activeState LOW or HIGH. Default is LOW
      */
-    explicit GenericOutputBase(uint8_t pin, bool activeState = LOW);
+    explicit GenericOutputBase(uint8_t pin, bool activeState = LOW, startup_state_t startUpState = START_UP_NONE);
 
 #if defined(USE_PCF8574)
     /**
@@ -57,7 +89,7 @@ public:
      * @param pin pin number
      * @param activeState LOW or HIGH. Default is LOW
      */
-    explicit GenericOutputBase(PCF8574& pcf8574, uint8_t pin, bool activeState = LOW);
+    explicit GenericOutputBase(PCF8574& pcf8574, uint8_t pin, bool activeState = LOW, startup_state_t startUpState = START_UP_NONE);
 #endif
 
     /**
@@ -101,14 +133,14 @@ public:
      * @brief Set the power state
      * @param state true to turn on, false to turn off
      */
-    void setState(bool state);
+    void setState(bool state, bool force = false);
 
     /**
      * @brief Set the power state from string "ON" or "OFF"
      *
      * @param state
      */
-    void setState(const String &state);
+    void setState(const String &state, bool force = false);
 
     /**
      * @brief Set the Active State object
@@ -182,15 +214,38 @@ public:
 
 #if defined(USE_FIREBASE_RTDB)
 
-    // @TODO implement start up state
+    /**
+     * @brief Attach Firebase RTDB to the device
+     * @param database_config
+     * @param path the sub path for the device
+     * @param startupState
+     * @param fbCallback The callback function to be called when the state is updated to the database
+     *
+     * Call syncState(bool) to set the state received from database on first connect.
+     * If startupState is START_UP_LAST_STATE, the last state from database is high priority than FS last state. If startupState is START_UP_NONE, device will set to database the last state from FS.
+     */
     void
-    attachDatabase(fbrtdb_object *database_config, const String &path, startup_state_t startupState = START_UP_OFF,
-                   AsyncResultCallback fbCallback = nullptr) {
+    attachDatabase(fbrtdb_object *database_config, const String &path, AsyncResultCallback fbCallback = nullptr) {
         _databaseConfig = database_config;
         _rtdbPath = path;
         _generateTaskId();
-        _startUpState = startupState;
         _fbCallback = fbCallback;
+    }
+
+    /**
+     * @brief Sync the state from the database to the device
+     * @param state
+     *
+     * Called when the device is first connected to the database
+     */
+    void syncState(bool state) {
+        if (state == _state) return;
+        if (_startUpState == START_UP_LAST_STATE) {
+            setState(state);
+        } else {
+            // set to database
+            _setRTDBState();
+        }
     }
 
     String getDatabasePath() const {
@@ -213,13 +268,34 @@ public:
 #endif // USE_FIREBASE_RTDB
 
 protected:
-    uint8_t _pin;
-    bool _activeState;
-    bool _state;
-    startup_state_t _startUpState = START_UP_OFF;
+    uint8_t _pin{};
+    bool _activeState{};
+    bool _state{};
+    startup_state_t _startUpState = START_UP_NONE;
     std::function<void()> _onPowerOn = nullptr;
     std::function<void()> _onPowerOff = nullptr;
     std::function<void()> _onPowerChanged = nullptr;
+
+#ifdef USE_LAST_STATE
+    const String _lastStateFSPath = "/gpiols";
+#endif
+
+    /**
+     * @brief read/set last state
+     */
+    virtual void init();
+
+    /**
+    * @brief Read the last state. This function is called when the device is initialized
+    * @return
+    */
+    virtual bool readLastState();
+
+    /**
+     * @brief Save to current state. This function is called when the device is turned on or off
+     * Default is to save to FS. Override this function to save to other storage
+     */
+    virtual void setLastState();
 
 #if defined(USE_PCF8574)
     PCF8574* _pcf8574 = nullptr;
@@ -240,8 +316,23 @@ protected:
 
     void _setRTDBState() {
         if (_databaseConfig != nullptr) {
-            _databaseConfig->rtdb->set(*_databaseConfig->client, _databaseConfig->prefixPath + _rtdbPath, _state,
-                                       _fbCallback, _rtdbTaskId);
+//            xTaskCreate([](void *param) {
+//                auto *g = (GenericOutputBase *) param;
+//                g->_databaseConfig->rtdb->set(
+//                        *g->_databaseConfig->client,
+//                        g->_databaseConfig->prefixPath + g->_rtdbPath,
+//                        g->_state,
+//                        g->_fbCallback,
+//                        g->_rtdbTaskId);
+//                vTaskDelete(nullptr);
+//            }, "setRTDB", 4096, this, 1, nullptr);
+
+            _databaseConfig->rtdb->set(
+                    *_databaseConfig->client,
+                    _databaseConfig->prefixPath + _rtdbPath,
+                    _state,
+                    _fbCallback,
+                    _rtdbTaskId);
         }
     }
 

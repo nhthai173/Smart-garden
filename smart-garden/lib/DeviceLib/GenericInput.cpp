@@ -9,9 +9,10 @@ GenericInput::GenericInput(uint8_t pin, uint8_t mode, bool activeState, uint32_t
     pinMode(pin, mode);
     _pin = pin;
     _activeState = activeState;
-    _lastState = digitalRead(_pin);
+    _lastState = digitalRead(pin);
     _lastReadState = _lastState;
     _debounceTime = debounceTime;
+    _lastDebounceTime = millis();
 }
 
 GenericInput::~GenericInput() {
@@ -28,6 +29,7 @@ void GenericInput::loop() {
         _lastDebounceTime = millis();
     }
     if (millis() - _lastDebounceTime >= _debounceTime && currentState != _lastState) {
+        GI_DEBUG_PRINT("[%d] has been changed to: %d (%s)\n", _pin, _lastState, isActive ? "ACTIVE" : "INACTIVE");
         _lastState = currentState;
         _allHoldCBExecuted = false;
         if (isActive) {
@@ -49,11 +51,11 @@ void GenericInput::loop() {
         if (_onChangeCB != nullptr) {
             _onChangeCB();
         }
-        Serial.printf("[%d] Change state: %d\n", this->_pin, isActive);
     }
     _lastReadState = currentState;
 
     if (!_allHoldCBExecuted) {
+        GI_DEBUG_PRINT("Checking hold state callbacks\n");
         uint8_t pendingCnt = 0;
         for (auto &cb: _holdStateCBs) {
             if (cb.state == isActive) {
@@ -61,6 +63,7 @@ void GenericInput::loop() {
                 pendingCnt++;
                 uint32_t time = isActive ? _lastActiveTime : _lastInactiveTime;
                 if (millis() - time >= cb.time) {
+                    GI_DEBUG_PRINT("> Executing hold state callback: %dms\n", cb.time);
                     if (cb.callback)
                         cb.callback();
                     cb.executed = true;
@@ -70,5 +73,6 @@ void GenericInput::loop() {
         if (!pendingCnt) {
             _allHoldCBExecuted = true;
         }
+        GI_DEBUG_PRINT("> Pending hold state callbacks: %d\n", pendingCnt);
     }
 }

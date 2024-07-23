@@ -15,10 +15,9 @@ namespace stdGenericOutput {
     class GenericOutput;
 }
 
-class stdGenericOutput::GenericOutput: public stdGenericOutput::GenericOutputBase
-{
+class stdGenericOutput::GenericOutput : public stdGenericOutput::GenericOutputBase {
 public:
-    GenericOutput() = default;
+    GenericOutput() : GenericOutputBase() { _startLoop(); }
 
 
     /**
@@ -28,11 +27,14 @@ public:
      * @param activeState LOW or HIGH. Default is LOW
      * @param duration duration to turn off after power is on in milliseconds
      */
-    explicit GenericOutput(uint8_t pin, bool activeState = LOW, uint32_t duration = 0) : GenericOutputBase(pin, activeState) {
+    explicit GenericOutput(uint8_t pin, bool activeState = LOW, startup_state_t startupState = START_UP_NONE,
+                           uint32_t duration = 0) : GenericOutputBase(pin, activeState, startupState) {
         _autoOffEnabled = false;
         _duration = duration;
         if (duration > 0)
             _autoOffEnabled = true;
+
+        _startLoop();
     }
 
 #if defined(USE_PCF8574)
@@ -50,6 +52,8 @@ public:
         _duration = duration;
         if (duration > 0)
             _autoOffEnabled = true;
+
+        _startLoop();
     }
 
 #endif
@@ -184,11 +188,49 @@ protected:
     uint32_t _pOnDelay = 0;
     uint32_t _previousMillis = 0;
     std::function<void()> _onAutoOff = nullptr;
+
+    unsigned long _loopPeriod = 500;
+
+    void init() override {
+        GenericOutputBase::init();
+        _pState = _state ? ON : OFF;
+    }
+
+    void _startLoop() {
+//        xTaskCreate([](void *p) {
+//            auto *self = static_cast<GenericOutput *>(p);
+//            for (;;) {
+//                if (self->_onceTimeDuration > 0 && self->_state) {
+//                    if (millis() >= self->_previousMillis + self->_onceTimeDuration) {
+//                        self->_onceTimeDuration = 0;
+//                        self->off(false);
+//                        if (self->_onAutoOff != nullptr) {
+//                            Serial.printf("P[%d] -> Autooff once\n", self->_pin);
+//                        }
+//                    }
+//                } else if (self->_autoOffEnabled && self->_state) {
+//                    if (millis() >= self->_previousMillis + self->_duration) {
+//                        self->off(false);
+//                        if (self->_onAutoOff != nullptr) {
+//                            Serial.printf("P[%d] -> Autooff\n", self->_pin);
+//                            self->_onAutoOff();
+//                        }
+//                    }
+//                }
+//
+//                if (self->_pState == WAIT_FOR_ON && millis() >= self->_previousMillis + self->_pOnDelay) {
+//                    Serial.printf("P[%d] -> on-delay\n", self->_pin);
+//                    self->_pState = ON;
+//                    self->on(false);
+//                }
+//                vTaskDelay(pdMS_TO_TICKS(self->_loopPeriod));
+//            }
+//        }, "loop", 4096, this, 1, nullptr);
+    }
 };
 
 
 using stdGenericOutput::GenericOutput;
-
 
 
 #endif // GENERIC_OUTPUT_H

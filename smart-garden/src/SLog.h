@@ -91,6 +91,7 @@ private:
         if (!response.length())
             return 0;
         if (!response.startsWith("{\"ok\":true")) {
+            Serial.println("[Telegram] Fail response");
             Serial.println(response);
             return 0;
         }
@@ -121,6 +122,14 @@ public:
     }
 
     uint16_t sendReq(const String& url) {
+        if (!url.length())
+            return 0;
+
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("[Telegram] No internet connection");
+            return 0;
+        }
+
         String response;
         uint16_t httpCode = 0;
 
@@ -149,9 +158,8 @@ public:
             String line = _client->readStringUntil('\n');
             if (line.startsWith("HTTP/1.1")) {
                 httpCode = line.substring(9, 12).toInt();
-                break;
             }
-            if (line == "\r") break;
+            if (line == "\r") break; // end header
         }
         while (_client->available()) {
             response += (char)_client->read();
