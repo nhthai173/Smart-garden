@@ -20,7 +20,7 @@
 // mobizt/FirebaseClient@^1.3.5
 #define ENABLE_NFIREBASE
 
-#define ENABLE_LOGGER
+// #define ENABLE_LOGGER
 
 #define ENABLE_SCHEDULER
 
@@ -69,8 +69,6 @@
 #include "FirebaseIOT.h"
 #include "FirebaseRTDBIntegrate.h"
 
-static uint32_t acceptedCallbackMillis = 0;
-
 fbrtdb_object *RTDBObj;
 
 #endif // ENABLE_NFIREBASE
@@ -102,8 +100,8 @@ Scheduler<WateringTaskArgs> scheduler(WateringTaskExec);
 
 #include "SLog.h"
 
-SLog logger(BOT_TOKEN, CHAT_ID);
-//SLog logger;
+// SLog logger(BOT_TOKEN, CHAT_ID);
+SLog logger;
 
 struct {
     int8_t timer = -1;
@@ -369,6 +367,7 @@ void setup() {
 
     timer.setInterval(1000L, []() {
         Serial.print(".");
+        // Serial.printf("Free heap: %d\n", esp_get_free_heap_size());
     });
 
     ACPower.onPowerOn([]() {
@@ -788,10 +787,6 @@ bool connectWiFi() {
 
 
 void notifyState() {
-
-#if defined(ENABLE_NFIREBASE)
-    acceptedCallbackMillis = millis() + 10000;
-#endif
 
 #if defined(ENABLE_SERVER)
     if (ws.getClients().isEmpty()) return;

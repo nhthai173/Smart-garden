@@ -22,7 +22,7 @@
 #endif // __has_include(<FirebaseClient.h>)
 
 // Use FS to store last state, comment this line to disable
-//#define USE_LAST_STATE
+// #define USE_LAST_STATE
 
 #if defined(USE_LAST_STATE)
 #if defined(ESP8266)

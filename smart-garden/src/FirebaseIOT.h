@@ -8,6 +8,7 @@
 #define USE_STREAM
 #define USE_OTA
 #define FB_PRINT_RESULT
+#define FB_USE_LESS_MEMORY
 
 #include <FirebaseClient.h>
 #include <WiFiClientSecure.h>
@@ -65,7 +66,13 @@ void printResult(AsyncResult &aResult) {}
 
 #ifdef USE_STREAM
 
+#ifdef USE_LESS_MEMORY
+WiFiClient stream_client_basic;
+ESP_SSLClient stream_ssl_client;
+#else
 WiFiClientSecure stream_ssl_client;
+#endif
+
 AsyncClientClass streamClient(stream_ssl_client, getNetwork(fbNetwork));
 
 struct {
@@ -91,8 +98,18 @@ public:
         ssl_client.setInsecure();
 
 #ifdef USE_STREAM
-        stream_ssl_client.setInsecure();
+
+#ifdef USE_LESS_MEMORY
+        stream_ssl_client.setClient(&stream_client_basic);
 #endif
+
+        stream_ssl_client.setInsecure();
+
+#ifdef USE_LESS_MEMORY
+        stream_ssl_client.setBufferSizes(2048, 1024);
+#endif
+
+#endif // USE_STREAM
 
         user_auth = new UserAuth(api, email, password);
 

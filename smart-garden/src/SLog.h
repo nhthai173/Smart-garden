@@ -7,8 +7,23 @@
 
 #include "Logger.h"
 
-#define USE_TELEGRAM_LOG
+#define SLOG_DEBUG
+// #define USE_TELEGRAM_LOG
 
+
+
+
+// Debug macro
+#ifdef SLOG_DEBUG
+#define SLOG_P(...) Serial.printf(##__VA_ARGS__)
+#define SLOG_Pln(s) Serial.println(s)
+#else
+#define SLOG_P(...)
+#define SLOG_Pln(s)
+#endif
+
+
+// Use Telegram log macro
 #ifdef USE_TELEGRAM_LOG
 
 #include <vector>
@@ -17,6 +32,17 @@
 #define SLOG_PARSE_MODE_MARKDOWN 0
 
 static const char SLOG_HTML_ENCODE_LIST[] = ">-={}().!";
+
+
+
+struct TBot_request {
+    String url;
+    uint16_t httpCode;
+    uint16_t messageId;
+    std::function<void(uint16_t)> callback;
+    bool completed;
+};
+
 
 class TBot {
 
@@ -27,6 +53,10 @@ private:
     String _chatId;
     uint8_t _parseMode = SLOG_PARSE_MODE_MARKDOWN;
     WiFiClientSecure *_client = nullptr;
+    TaskHandle_t _reqHandle = nullptr;
+    std::vector<TBot_request> _requestQueue;
+    uint32_t _lastReqTime = 0;
+    uint32_t _timeout = 6000;
 
     static String encodeMarkdown(String &s) {
         if (!s.length()) return "";
@@ -91,8 +121,8 @@ private:
         if (!response.length())
             return 0;
         if (!response.startsWith("{\"ok\":true")) {
-            Serial.println("[Telegram] Fail response");
-            Serial.println(response);
+            SLOG_Pln("[Telegram] Fail response");
+            SLOG_Pln(response);
             return 0;
         }
         int msgIdIndex = response.indexOf("\"message_id\":");
@@ -104,14 +134,23 @@ private:
         return response.substring(msgIdIndex + 13, msgIdEndIndex).toInt();
     }
 
+    void endTask() {
+        if (_client) {
+            delete _client;
+            _client = nullptr;
+        }
+        if (_reqHandle) {
+            _reqHandle = nullptr;
+            vTaskDelete(nullptr);
+        }
+    }
+
 public:
 
     TBot(const String& token, const String& chatId, uint8_t textMode = SLOG_PARSE_MODE_MARKDOWN) {
         _botToken = token;
         _chatId = chatId;
         _parseMode = textMode;
-        _client = new WiFiClientSecure();
-        _client->setInsecure();
     }
 
     ~TBot() {
@@ -121,84 +160,159 @@ public:
         }
     }
 
-    uint16_t sendReq(const String& url) {
+    void sendReq(const String& url, const std::function<void(uint16_t)> &callback = nullptr) {
         if (!url.length())
-            return 0;
+            return;
 
-        if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("[Telegram] No internet connection");
-            return 0;
-        }
-
-        String response;
-        uint16_t httpCode = 0;
-
-        if (!_client) {
-            _client = new WiFiClientSecure();
-            _client->setInsecure();
-        }
-
-        _client->connect("api.telegram.org", 443, 5000L);
-        if (!_client->connected()) {
-            delete _client;
-            _client = new WiFiClientSecure();
-            _client->setInsecure();
-            _client->connect("api.telegram.org", 443, 5000L);
-            if (!_client->connected()) {
-                Serial.println("[Telegram] Unable to connect to telegram server");
-                delete _client;
-                _client = nullptr;
-                return 0;
-            }
-        }
-        _client->print(String("GET ") + url + " HTTP/1.1\r\n" +
-                       "Host: api.telegram.org\r\n" +
-                       "Connection: close\r\n\r\n");
-        while (_client->connected()) {
-            String line = _client->readStringUntil('\n');
-            if (line.startsWith("HTTP/1.1")) {
-                httpCode = line.substring(9, 12).toInt();
-            }
-            if (line == "\r") break; // end header
-        }
-        while (_client->available()) {
-            response += (char)_client->read();
-        }
-        _client->stop();
-
-        if (httpCode > 0) {
-            if (httpCode != 200) {
-                Serial.printf("[Telegram] HTTP code: %d\n", httpCode);
-                Serial.println(response);
-                return 0;
-            }
-            return _getMessageId(response);
-        }
-
-        return 0;
+        // Add to queue, process in loop
+        _requestQueue.push_back({url, 0, 0, callback, false});
     }
 
-    uint16_t sendMessage(String &message) {
+    void sendMessage(String &message, const std::function<void(uint16_t)> &callback = nullptr) {
         String url = _prepareReq("sendMessage", message);
         if (!url.length())
-            return 0;
-        return sendReq(url);
+            return;
+        sendReq(url, callback);
     }
 
-    uint16_t editMessage(uint16_t messageId, String &message) {
+    void editMessage(uint16_t messageId, String &message, const std::function<void(uint16_t)> &callback = nullptr) {
         String url = _prepareReq("editMessageText", message);
         if (!url.length())
-            return 0;
-        url += "&message_id=" + String(messageId);
-        return sendReq(url);
+            return;
+        if (messageId)
+            url += "&message_id=" + String(messageId);
+        sendReq(url, callback);
     }
 
-};
+    void process() {
+        if (_requestQueue.empty())
+            return;
 
-struct SLogMessage {
-    String message;
-    uint16_t messageId{};
-    std::function<void(uint16_t)> callback;
+        uint8_t cnt = 0;
+
+        for (auto req: _requestQueue) {
+            if (req.completed) {
+                if (req.callback) {
+                    SLOG_P("[Telegram][complete] Callback with msgId = %d\n", req.messageId);
+                    req.callback(req.messageId);
+                } else {
+                    SLOG_P("[Telegram][complete] msgId = %d\n", req.messageId);
+                }
+            }
+        }
+        for (auto it = _requestQueue.begin(); it != _requestQueue.end();) {
+            if (it->completed) {
+                ++cnt;
+                it = _requestQueue.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        SLOG_P("[Telegram][loop] Processed %d/%d requests\n", cnt, _requestQueue.size());
+
+        if (_reqHandle != nullptr) {
+            auto status = eTaskGetState(_reqHandle);
+            SLOG_P("[Telegram][loop] Free space: %d, status: %d\n", uxTaskGetStackHighWaterMark(_reqHandle), status);
+            return;
+        }
+
+        if (_requestQueue.empty())
+            return;
+
+        SLOG_Pln("[Telegram][loop][add task]");
+
+        // Process in RTOS task
+        xTaskCreate(
+            [](void *param) {
+                SLOG_Pln("[Telegram][task][processing]");
+                auto *bot = (TBot *) param;
+
+                if (!bot) {
+                    SLOG_Pln("[Telegram][task] Invalid bot");
+                    vTaskDelete(nullptr);
+                    return;
+                }
+
+                // No task -> exit
+                if (bot->_requestQueue.empty()) {
+                    SLOG_Pln("[Telegram][task] No request");
+                    bot->endTask();
+                    return;
+                }
+
+                bot->_lastReqTime = millis();
+                auto *req = &bot->_requestQueue[0];
+                
+                SLOG_P("[Telegram][task] Got a request\n");
+
+                if (bot->_client) {
+                    delete bot->_client;
+                }
+
+                SLOG_P("Free heap: %d\n", esp_get_free_heap_size());
+
+                bot->_client = new WiFiClientSecure();
+                bot->_client->setInsecure();
+                
+                SLOG_P("[Telegram][task] Sending request: ...%s\n", req->url.substring(req->url.length() - 40).c_str());
+
+                bot->_client->connect("api.telegram.org", 443, 2000L);
+                if (!bot->_client->connected()) {
+                    req->completed = true;
+                    SLOG_Pln("[Telegram][task] Unable to connect to telegram server");
+                    return bot->endTask();
+                }
+
+                bot->_client->print(String("GET ") + req->url + " HTTP/1.1\r\n" +
+                       "Host: api.telegram.org\r\n" +
+                       "Connection: close\r\n\r\n");
+
+                while (bot->_client->connected()) {
+                    String line = bot->_client->readStringUntil('\n');
+                    if (line.startsWith("HTTP/1.1")) {
+                        req->httpCode = line.substring(9, 12).toInt();
+                    }
+                    if (line == "\r") break; // end header
+                    if (millis() > bot->_lastReqTime + bot->_timeout) {
+                        SLOG_Pln("[Telegram][task] Request timeout");
+                        req->completed = true;
+                        bot->_client->stop();
+                        return bot->endTask();
+                    }
+                }
+
+                SLOG_P("[Telegram][task] HTTP code: %d\n", req->httpCode);
+
+                String response = "";
+                while (bot->_client->available()) {
+                    response += (char)bot->_client->read();
+                    if (millis() > bot->_lastReqTime + bot->_timeout) {
+                        SLOG_Pln("[Telegram][task] Request timeout");
+                        req->completed = true;
+                        bot->_client->stop();
+                        return bot->endTask();
+                    }
+                }
+                bot->_client->stop();
+                if (req->httpCode > 0) {
+                    if (req->httpCode != 200) {
+                        SLOG_P("[Telegram][task][Error] HTTP code: %d\n", req->httpCode);
+                        SLOG_Pln(response);
+                    }
+                    req->messageId = TBot::_getMessageId(response);
+                }
+                req->completed = true;
+                SLOG_P("[Telegram][task] Request completed code = %d, msgId = %d\n", req->httpCode, req->messageId);
+                bot->endTask();
+            },
+            "TBotReq",
+            3072,
+            this,
+            1 | portPRIVILEGE_BIT,
+            &_reqHandle);
+    }
+
 };
 
 #endif // USE_TELEGRAM_LOG
@@ -207,7 +321,6 @@ class SLog : public Logger{
 private:
 #ifdef USE_TELEGRAM_LOG
     TBot *bot = nullptr;
-    std::vector<SLogMessage> _botMessageQueue;
 #endif
 
 public:
@@ -264,47 +377,22 @@ public:
      * @param message
      * @param messageId if messageId > 0, edit message with this id
      */
-    void logTele(const String &message, std::function<void(uint16_t)> callback = nullptr) {
+    void logTele(const String &message, const std::function<void(uint16_t)> &callback = nullptr) {
 #ifdef USE_TELEGRAM_LOG
-        SLogMessage m;
-        m.message = message;
-        m.messageId = 0;
-        m.callback = std::move(callback);
-        _botMessageQueue.push_back(m);
+        bot->sendMessage(const_cast<String &>(message), callback);
 #endif
     }
 
     void logTeleEdit(uint16_t messageId, const String &message, std::function<void(uint16_t)> callback = nullptr) {
 #ifdef USE_TELEGRAM_LOG
-        SLogMessage m;
-        m.message = message;
-        m.messageId = messageId;
-        m.callback = std::move(callback);
-        _botMessageQueue.push_back(m);
+        bot->editMessage(messageId, const_cast<String &>(message), callback);
 #endif
     }
 
     void loop() {
         processQueue();
 #ifdef USE_TELEGRAM_LOG
-        if (_botMessageQueue.empty())
-            return;
-        auto mes = _botMessageQueue[0];
-        if (mes.messageId > 0) {
-            bot->editMessage(mes.messageId, mes.message);
-            if (mes.callback) {
-                mes.callback(mes.messageId);
-            }
-        } else {
-            uint16_t msgId = bot->sendMessage(mes.message);
-            if (msgId) {
-                _botMessageQueue[0].messageId = msgId;
-            }
-            if (mes.callback) {
-                mes.callback(msgId);
-            }
-        }
-        _botMessageQueue.erase(_botMessageQueue.begin());
+        bot->process();
 #endif
     } // loop
 
