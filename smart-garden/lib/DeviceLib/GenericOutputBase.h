@@ -218,7 +218,6 @@ public:
      * @brief Attach Firebase RTDB to the device
      * @param database_config
      * @param path the sub path for the device
-     * @param startupState
      * @param fbCallback The callback function to be called when the state is updated to the database
      *
      * Call syncState(bool) to set the state received from database on first connect.
@@ -316,17 +315,6 @@ protected:
 
     void _setRTDBState() {
         if (_databaseConfig != nullptr) {
-//            xTaskCreate([](void *param) {
-//                auto *g = (GenericOutputBase *) param;
-//                g->_databaseConfig->rtdb->set(
-//                        *g->_databaseConfig->client,
-//                        g->_databaseConfig->prefixPath + g->_rtdbPath,
-//                        g->_state,
-//                        g->_fbCallback,
-//                        g->_rtdbTaskId);
-//                vTaskDelete(nullptr);
-//            }, "setRTDB", 4096, this, 1, nullptr);
-
             _databaseConfig->rtdb->set(
                     *_databaseConfig->client,
                     _databaseConfig->prefixPath + _rtdbPath,

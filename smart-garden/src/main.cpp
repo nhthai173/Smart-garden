@@ -185,7 +185,9 @@ WSHandler(AsyncWebSocket *sv, AsyncWebSocketClient *client, AwsEventType type, v
             break;
         case WS_EVT_DATA:
             Serial.printf("WS client [%d] message: %s\n", client->id(), message.c_str());
-            if (message.startsWith("R1:")) {
+            if (message.startsWith("GET")) {
+                notifyState();
+            } else if (message.startsWith("R1:")) {
                 ValvePower.setState(message.substring(3));
             } else if (message.startsWith("R2:")) {
                 ValveDirection.setState(message.substring(3));
@@ -468,6 +470,9 @@ void setup() {
         logger.logTele("🚰 Nước đã hết ngập");
 #endif // ENABLE_LOGGER
     });
+#if defined(ENABLE_NFIREBASE)
+    WaterLeak.setDatabaseReportStateDelay(5000L);
+#endif
 
 #if defined(ENABLE_SERVER)
     server.onNotFound([](AsyncWebServerRequest *request) { request->send(404, "text/plain", "Not found"); });
@@ -658,6 +663,7 @@ void setup() {
     // <user_id>/<device_id>/data
     RTDBObj->prefixPath = FirebaseIOT.DB_DEVICE_PATH + "/data";
 
+    WaterLeak.attachDatabase(RTDBObj, "/water_leak", printResult);
     Valve.attachDatabase(RTDBObj, "/valve", printResult);
 //    ValvePower.attachDatabase(RTDBObj, "/r1", printResult);
 //    ValveDirection.attachDatabase(RTDBObj, "/r2", printResult);
@@ -701,12 +707,7 @@ void setup() {
             } else if (RTDB.dataPath() == "/" && RTDB.type() == realtime_database_data_type_json) {
                 JSON::JsonParser parser(RTDB.to<String>());
                 Valve.syncState(parser.get<bool>("valve"));
-//                ValvePower.syncState(parser.get<bool>("r1"));
-//                ValveDirection.syncState(parser.get<bool>("r2"));
-//                PumpPower.syncState(parser.get<bool>("r3"));
-//                ACPower.syncState(parser.get<bool>("r4"));
-                notifyState();
-
+                
                 if (parser.get<bool>("water_leak") != WaterLeak.getState()) {
                     FirebaseIOT.set("/data/water_leak", WaterLeak.getState());
                 }
@@ -720,27 +721,16 @@ void setup() {
                         Serial.println("Restarting...");
                         ESP.restart();
                     });
+                } else if (v == "schedules") {
+                    FirebaseIOT.set("/data/restart", false, [](AsyncResult &res) {
+                        timer.setTimeout(100L, [](){ scheduler.load(); });
+                    });
                 }
             } else if (RTDB.dataPath() == "/water_leak" && RTDB.to<bool>() != WaterLeak.getState()) {
                 FirebaseIOT.set("/data/water_leak", WaterLeak.getState());
             } else if (RTDB.dataPath() == "/valve") {
                 Valve.setState(RTDB.to<bool>());
             }
-//            else {
-//                if (RTDB.dataPath() == "/r3") {
-//                    PumpPower.setState(RTDB.to<bool>());
-//                } else if (RTDB.dataPath() == "/valve") {
-//                    Valve.setState(RTDB.to<bool>());
-//                } else if (millis() > acceptedCallbackMillis) {
-//                    if (RTDB.dataPath() == "/r1") {
-//                        ValvePower.setState(RTDB.to<bool>());
-//                    } else if (RTDB.dataPath() == "/r2") {
-//                        ValveDirection.setState(RTDB.to<bool>());
-//                    } else if (RTDB.dataPath() == "/r4") {
-//                        ACPower.setState(RTDB.to<bool>());
-//                    }
-//                }
-//            }
 
             notifyState();
         });
@@ -760,11 +750,7 @@ void setup() {
 
 
 void loop() {
-//    WaterLeak.loop();
     timer.run();
-//#if defined(ENABLE_SERVER)
-//    ws.cleanupClients();
-//#endif
 }
 
 bool connectWiFi() {

@@ -55,14 +55,14 @@ void GenericInput::loop() {
     _lastReadState = currentState;
 
     if (!_allHoldCBExecuted) {
+        uint32_t lastChangeTime = isActive ? _lastActiveTime : _lastInactiveTime;
         GI_DEBUG_PRINT("Checking hold state callbacks\n");
         uint8_t pendingCnt = 0;
         for (auto &cb: _holdStateCBs) {
             if (cb.state == isActive) {
                 if (cb.executed) continue;
                 pendingCnt++;
-                uint32_t time = isActive ? _lastActiveTime : _lastInactiveTime;
-                if (millis() - time >= cb.time) {
+                if (millis() - lastChangeTime >= cb.time) {
                     GI_DEBUG_PRINT("> Executing hold state callback: %dms\n", cb.time);
                     if (cb.callback)
                         cb.callback();
@@ -73,6 +73,15 @@ void GenericInput::loop() {
         if (!pendingCnt) {
             _allHoldCBExecuted = true;
         }
+
+#ifdef USE_FIREBASE_RTDB
+        if (millis() - lastChangeTime >= _reportStateDelay) {
+            _setRTDBState();   
+        } else {
+            _allHoldCBExecuted = false;
+        }
+#endif
+
         GI_DEBUG_PRINT("> Pending hold state callbacks: %d\n", pendingCnt);
-    }
-}
+    } // !_allHoldCBExecuted
+} // loop

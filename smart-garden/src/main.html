@@ -25,6 +25,7 @@
             justify-content: center;
             align-items: center;
         }
+
         .loading-container {
             width: max-content;
             height: max-content;
@@ -57,6 +58,7 @@
         .form-range::-webkit-slider-runnable-track {
             background-color: transparent;
         }
+
         .form-range:disabled {
             visibility: hidden;
         }
@@ -81,7 +83,8 @@
                 <div class="card">
                     <div class="card-body">
                         <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" role="switch" id="VALVE" checked-label="OPEN" uncheck-label="CLOSE">
+                            <input class="form-check-input" type="checkbox" role="switch" id="VALVE"
+                                checked-label="OPEN" uncheck-label="CLOSE">
                             <label class="form-check-label" for="flexSwitchCheckDefault">VALVE</label>
                         </div>
                     </div>
@@ -193,26 +196,50 @@
         }
     </script>
     <script>
-        var ws = new WebSocket(`ws://${location.host}/ws`);
+        var ws
+        const wsReconnectInterval = 5000
 
-        ws.onmessage = (e) => {
-            LOADING.hide()
-            const message = e.data
-            console.log('[WS Received]', message)
-            if (!message) return
-            message.split('\n')
-                .forEach(m => {
-                    if (!m.includes(':')) return
-                    const [id, state] = m.split(':')
-                    setSwitchState(id, state)
-                });
+        function connectWS() {
+            ws = new WebSocket(`ws://${location.host}/ws`)
+            ws.onmessage = (e) => {
+                LOADING.hide()
+                const message = e.data
+                console.log('[WS Received]', message)
+                if (!message) return
+                message.split('\n')
+                    .forEach(m => {
+                        if (!m.includes(':')) return
+                        const [id, state] = m.split(':')
+                        setSwitchState(id, state)
+                    });
+            }
+            ws.onopen = () => {
+                console.log('[WS Opened]')
+                LOADING.hide()
+            }
+            ws.onclose = () => {
+                console.log('[WS Closed]')
+                LOADING.show(5000, () => {
+                    LOADING.setText('Mất kết nối. Đang kết nối lại.', 100000)
+                    setTimeout(connectWS, wsReconnectInterval)
+                })
+            }
+            ws.onerror = () => {
+                console.log('[WS Error]')
+                LOADING.show(5000, () => {
+                    LOADING.setText('Lỗi: kết nối thất bại. Đang kết nối lại.', 100000)
+                    setTimeout(connectWS, wsReconnectInterval)
+                })
+            }
         }
+        LOADING.show(5000, () => setTimeout(connectWS, wsReconnectInterval))
+        connectWS()
 
         document.querySelectorAll('.form-switch input').forEach(i => {
             i.addEventListener('change', e => {
                 console.log(e.target.id, e.target.checked)
-                LOADING.show(2000, () => {
-                    LOADING.setText('Lỗi: điều khiển thất bại', 2000)
+                LOADING.show(5000, () => {
+                    LOADING.setText('Lỗi: điều khiển thất bại', 3000)
                     e.target.checked = !e.target.checked
                 })
                 let state = ''

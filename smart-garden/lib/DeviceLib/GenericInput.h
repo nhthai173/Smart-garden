@@ -16,6 +16,24 @@
 #define GI_DEBUG_PRINT(...)
 #endif // DEBUG_GENERIC_INPUT
 
+
+
+
+
+#if __has_include(<FirebaseClient.h>)
+
+#include <FirebaseClient.h>
+#include "FirebaseRTDBIntegrate.h"
+
+#ifndef USE_FIREBASE_RTDB
+#define USE_FIREBASE_RTDB
+#endif // USE_FIREBASE_RTDB
+
+#endif // __has_include(<FirebaseClient.h>)
+
+
+
+
 struct GI_hold_state_cb_t {
     bool state;
     uint32_t time;
@@ -197,6 +215,76 @@ public:
      * @brief Loop function to be called in the main loop
      */
     void loop();
+    
+
+
+    // Firebase RTDB
+#ifdef USE_FIREBASE_RTDB
+
+    /**
+     * @brief Attach Firebase RTDB to the device
+     * @param database_config
+     * @param path the sub path for the device
+     * @param fbCallback The callback function to be called when the state is updated to the database
+     *
+     * Call syncState(bool) to set the state received from database on first connect.
+     * If startupState is START_UP_LAST_STATE, the last state from database is high priority than FS last state. If startupState is START_UP_NONE, device will set to database the last state from FS.
+     */
+    void
+    attachDatabase(fbrtdb_object *database_config, const String &path, AsyncResultCallback fbCallback = nullptr) {
+        _databaseConfig = database_config;
+        _rtdbPath = path;
+        _generateTaskId();
+        _fbCallback = fbCallback;
+    }
+
+    /**
+     * @brief Get the sub path for the device
+     * 
+     * @return String 
+     */
+    String getDatabasePath() const {
+        return _rtdbPath;
+    }
+
+    /**
+     * @brief Get the full path for the device
+     * 
+     * @param path 
+     */
+    String getDatabaseFullPath() const {
+        return _databaseConfig->prefixPath + _rtdbPath;
+    }
+
+    /**
+     * @brief Get the delay time to report state to the database when state is changed
+     * Default is 200ms
+     */
+    uint32_t getDatabaseReportStateDelay() const {
+        return _reportStateDelay;
+    }
+
+    void setDatabasePath(const String &path) {
+        _rtdbPath = path;
+        _generateTaskId();
+    }
+
+    void setDatabaseCallback(AsyncResultCallback *fbCallback) {
+        _fbCallback = reinterpret_cast<AsyncResultCallback>(fbCallback);
+    }
+
+    /**
+     * @brief Set the Database Report State Delay object
+     * 
+     * @param delay ms
+     */
+    void setDatabaseReportStateDelay(uint32_t delay) {
+        _reportStateDelay = delay;
+    }
+
+#endif // USE_FIREBASE_RTDB
+
+
 
 protected:
     uint8_t _pin = 0;
@@ -215,7 +303,38 @@ protected:
     uint32_t _lastInactiveTime = 0;
     bool _allHoldCBExecuted = false;
     std::vector<GI_hold_state_cb_t> _holdStateCBs;
-};
+
+
+#ifdef USE_FIREBASE_RTDB
+    fbrtdb_object *_databaseConfig = nullptr;
+    String _rtdbPath;
+    String _rtdbTaskId;
+    uint32_t _reportStateDelay = 200;
+    AsyncResultCallback _fbCallback = nullptr;
+
+    void _generateTaskId() {
+        _rtdbTaskId = _rtdbPath;
+        _rtdbTaskId.replace("/", "");
+        _rtdbTaskId.replace(".", "_");
+        _rtdbTaskId.replace(" ", "_");
+    }
+
+    void _setRTDBState() {
+        if (_databaseConfig != nullptr && _rtdbPath.length() > 0) {
+            _databaseConfig->rtdb->set(
+                    *_databaseConfig->client,
+                    _databaseConfig->prefixPath + _rtdbPath,
+                    digitalRead(_pin) == _activeState,
+                    _fbCallback,
+                    _rtdbTaskId);
+        }
+    }
+
+#endif // USE_FIREBASE_RTDB
+
+
+
+}; // class GenericInput
 
 
 #endif //GENERICINPUT_H
