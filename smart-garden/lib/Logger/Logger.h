@@ -7,7 +7,6 @@
 
 #include <Arduino.h>
 #include <vector>
-#include <NTPClient.h>
 #if defined(ESP8266)
 #include <LittleFS.h>
 #define LOG_FS LittleFS
@@ -16,16 +15,16 @@
 #define LOG_FS SPIFFS
 #endif
 
-typedef struct {
-    uint32_t time;
-    String message;
-} log_item_t;
-
 class Logger {
 
 public:
 
-    Logger(NTPClient *timeClient);
+    struct log_queue_item {
+        uint32_t millis;
+        String message;
+    };
+
+    Logger();
 
     /**
      * Set maximum log time in days
@@ -47,7 +46,7 @@ public:
 
     virtual void clearAllLogs();
 
-    virtual bool log(String message);
+    virtual bool log(const String& message);
 
     virtual String getLogs();
 
@@ -55,11 +54,11 @@ public:
 
 protected:
     String filePath = "/logs.txt";
-    NTPClient* _timeClient;
     uint16_t _maxLogTime = 365; // days
-    std::vector<log_item_t> log_queue;
 
-    bool _log(String message);
+    std::vector<log_queue_item> _log_queue;
+
+    bool _log(const String& message);
 };
 
 

@@ -5,11 +5,11 @@
 #ifndef VIRTUALOUTPUT_H
 #define VIRTUALOUTPUT_H
 
-#include "AutoOff.h"
+#include "GenericOutput.h"
 
-class VirtualOutput : public AutoOff {
+class VirtualOutput : public GenericOutput {
 public:
-    VirtualOutput() : AutoOff() { }
+    VirtualOutput() : GenericOutput() { }
 
     /**
      * @brief Construct a new Virtual Output object
@@ -17,65 +17,86 @@ public:
      * @param offFunction function to execute when power is off
      * @param autoOffEnabled enable auto off feature
      */
-    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction, bool autoOffEnabled = false) : AutoOff() {
+    VirtualOutput(std::function<void()> onFunction, std::function<void()> offFunction, String onStateString = "ON", String offStateString = "OFF") : GenericOutput() {
         _onFunction = std::move(onFunction);
         _offFunction = std::move(offFunction);
-        _autoOffEnabled = autoOffEnabled;
+        _onStateString = std::move(onStateString);
+        _offStateString = std::move(offStateString);
     }
 
     /**
      * @brief Construct a new Virtual Output object with auto off feature and duration
-     * @param autoOffEnabled enable auto off feature
      * @param duration duration to turn off after power is on in milliseconds
      */
-    VirtualOutput(bool autoOffEnabled, unsigned long duration) : AutoOff() {
-        _autoOffEnabled = autoOffEnabled;
+    explicit VirtualOutput(uint8_t deviceId, stdGenericOutput::startup_state_t startupState, uint32_t duration = 0) : GenericOutput() {
+        _pin = deviceId;
+        _startUpState = startupState;
+        _autoOffEnabled = false;
         _duration = duration;
+        if (duration > 0) {
+            _autoOffEnabled = true;
+        }
+    }
+
+    ~VirtualOutput() {
+        _onFunction = nullptr;
+        _offFunction = nullptr;
+    }
+
+    /**
+     * @brief Set the start up state
+     * @param deviceId 100 - 199
+     * @param startupState
+     */
+    void setStartUpState(uint8_t deviceId, stdGenericOutput::startup_state_t startupState) {
+        _pin = deviceId;
+        _startUpState = startupState;
     }
 
     /**
      * @brief Set power to ON
      *
      */
-    void on() override;
+    void on(bool force) override;
 
     /**
      * @brief Set power to OFF
      *
      */
-    void off() override;
+    void off(bool force) override;
 
     /**
      * @brief alternate name for on()
-     *
+     * @param force force to set power
      */
-    void open() {
-        on();
+    void open(bool force = false) {
+        on(force);
     }
 
 
     /**
-     * @brief set power on for a duration. Only works once
-     * @param duration
+     * @brief set power on for a duration. Only works once, the next time it will be on with default duration
+     * @param duration duration in milliseconds
+     * @param force force to set power
      */
-    void open(unsigned long duration) {
-        AutoOff::on(duration);
+    void openOnce(uint32_t duration, bool force = false) {
+        GenericOutput::onOnce(duration, force);
     }
 
     /**
      * @brief set power on with percentage timing (0-100%) based on the duration
      * @param percentage 1-100
      */
-    void openPercentage(uint8_t percentage) {
-        AutoOff::onPercentage(percentage);
+    void openPercentage(uint8_t percentage, bool force = false) {
+        GenericOutput::onPercentage(percentage, force);
     }
 
     /**
      * @brief alternate name for off()
      *
      */
-    void close() {
-        off();
+    void close(bool force = false) {
+        off(force);
     }
 
     /**
@@ -102,12 +123,32 @@ public:
         _offStateString = offStateString;
     }
 
+    /**
+     * @brief Set the function to execute when power is on
+     * @param onFunction
+     */
     void setOnFunction(std::function<void()> onFunction) {
         _onFunction = std::move(onFunction);
     }
 
+    /**
+     * @brief Set the function to execute when power is off
+     * @param offFunction
+     */
     void setOffFunction(std::function<void()> offFunction) {
         _offFunction = std::move(offFunction);
+    }
+
+    /**
+     * @brief Set the state from last state (if used)
+     */
+    void init() override {
+        GenericOutput::init();
+        if (_state && _onFunction) {
+            _onFunction();
+        } else if (!_state && _offFunction) {
+            _offFunction();
+        }
     }
 
 protected:

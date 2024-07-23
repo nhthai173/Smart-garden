@@ -5,7 +5,7 @@
 #ifndef SMART_GARDEN_WATERINGSCHEDULE_H
 #define SMART_GARDEN_WATERINGSCHEDULE_H
 
-#include "Scheduler.hpp"
+#include "Scheduler.h"
 
 class WateringTaskArgs : public ScheduleTaskArgsBase {
 

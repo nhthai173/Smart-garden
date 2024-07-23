@@ -8,16 +8,19 @@
 #include <Arduino.h>
 #include <vector>
 
+#define DEBUG_GENERIC_INPUT
+
+#ifdef DEBUG_GENERIC_INPUT
+#define GI_DEBUG_PRINT(...) Serial.printf(__VA_ARGS__)
+#else
+#define GI_DEBUG_PRINT(...)
+#endif // DEBUG_GENERIC_INPUT
+
 struct GI_hold_state_cb_t {
+    bool state;
     uint32_t time;
     std::function<void()> callback;
     bool executed;
-};
-
-struct GI_hold_state_t {
-    bool state;
-    uint32_t lastTime;
-    std::vector<GI_hold_state_cb_t> callbacks;
 };
 
 class GenericInput {
@@ -32,6 +35,11 @@ public:
      * @param activeState active state. Default is LOW
      */
     explicit GenericInput(uint8_t pin, uint8_t mode = INPUT, bool activeState = LOW, uint32_t debounceTime = 50);
+
+    /**
+     * @brief Destroy the GenericInput object
+     */
+    ~GenericInput();
 
     /**
      * @brief Set the pin number
@@ -143,35 +151,51 @@ public:
         _onInactiveCB = std::move(cb);
     }
 
+    /**
+     * @brief Set the callback function when hold state
+     * @param state state to hold
+     * @param time time to hold in milliseconds
+     * @param callback callback function
+     */
     void onHoldState(bool state, uint32_t time, std::function<void()> callback) {
+        _allHoldCBExecuted = false;
+        bool currentState = _lastState == _activeState;
+
         // Callback list is empty
-        if (_holdStateCBs[state].callbacks.empty()) {
-            _holdStateCBs[state].callbacks.push_back({time, std::move(callback), false});
+        if (_holdStateCBs.empty()) {
+            // executed = true if current state is the same as the last state to prevent callback executed immediately
+            _holdStateCBs.push_back({state, time, std::move(callback), state == currentState});
             return;
         }
 
-        // Existing callback for this time
-        for (auto &cb : _holdStateCBs[state].callbacks) {
-            if (cb.time == time) {
+        // Existing callback for this state and time -> update callback
+        for (auto &cb : _holdStateCBs) {
+            if (cb.state == state && cb.time == time) {
                 cb.callback = std::move(callback);
+                cb.executed = state == currentState;
                 return;
             }
         }
 
         // New callback
-        _holdStateCBs[state].callbacks.push_back({time, std::move(callback), false});
+        _holdStateCBs.push_back({state, time, std::move(callback), state == currentState});
     }
 
     bool deleteHoldState(bool state, uint32_t time) {
-        for (auto it = _holdStateCBs[state].callbacks.begin(); it != _holdStateCBs[state].callbacks.end(); ++it) {
-            if (it->time == time) {
-                _holdStateCBs[state].callbacks.erase(it);
+        if (_holdStateCBs.empty())
+            return false;
+        for (auto it = _holdStateCBs.begin(); it != _holdStateCBs.end(); ++it) {
+            if (it->state == state && it->time == time) {
+                _holdStateCBs.erase(it);
                 return true;
             }
         }
         return false;
     }
 
+    /**
+     * @brief Loop function to be called in the main loop
+     */
     void loop();
 
 protected:
@@ -186,10 +210,11 @@ protected:
     std::function<void()> _onChangeCB = nullptr;
     std::function<void()> _onActiveCB = nullptr;
     std::function<void()> _onInactiveCB = nullptr;
-    GI_hold_state_t _holdStateCBs[2] = {
-        {false, 0},
-        {true, 0}
-    };
+
+    uint32_t _lastActiveTime = 0;
+    uint32_t _lastInactiveTime = 0;
+    bool _allHoldCBExecuted = false;
+    std::vector<GI_hold_state_cb_t> _holdStateCBs;
 };
 
 
