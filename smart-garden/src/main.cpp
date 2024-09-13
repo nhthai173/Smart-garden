@@ -82,7 +82,7 @@ GenericOutput PumpPower(16, OUTPUT_ACTIVE_STATE, stdGenericOutput::START_UP_OFF)
 GenericOutput ACPower(4, OUTPUT_ACTIVE_STATE, stdGenericOutput::START_UP_OFF, 180000L /* 3 min */); // R4
 VirtualOutput Valve(100, stdGenericOutput::START_UP_LAST_STATE, 60000L /* 1 min */);
 GenericInput WaterLeak(34, INPUT_PULLUP, LOW);
-VoltageReader PowerVoltage(32, 10.0, 3.33, 0.3, 10.5, 13.5);
+VoltageReader PowerVoltage(32, 10.0, 2, 0.3, 10.5, 13.5);
 
 SimpleTimer timer;
 
@@ -633,6 +633,10 @@ void setup() {
     });
 #endif // ENABLE_SCHEDULER
 
+    server.on("/voltage", HTTP_GET, [](AsyncWebServerRequest *request) {
+        responseSuccess(request, String(PowerVoltage.get()));
+    });
+
     /* ===================== */
 
     ws.onEvent(WSHandler);
@@ -707,10 +711,9 @@ void setup() {
             } else if (RTDB.dataPath() == "/" && RTDB.type() == realtime_database_data_type_json) {
                 JSON::JsonParser parser(RTDB.to<String>());
                 Valve.syncState(parser.get<bool>("valve"));
-                
-                if (parser.get<bool>("water_leak") != WaterLeak.getState()) {
-                    FirebaseIOT.set("/data/water_leak", WaterLeak.getState());
-                }
+                // if (parser.get<bool>("water_leak") != WaterLeak.getState()) {
+                //     FirebaseIOT.set("/data/water_leak", WaterLeak.getState());
+                // }
             } else if (RTDB.dataPath() == "/restart") {
                 String v = RTDB.to<String>();
                 if (v == "ota") {
@@ -726,8 +729,6 @@ void setup() {
                         timer.setTimeout(100L, [](){ scheduler.load(); });
                     });
                 }
-            } else if (RTDB.dataPath() == "/water_leak" && RTDB.to<bool>() != WaterLeak.getState()) {
-                FirebaseIOT.set("/data/water_leak", WaterLeak.getState());
             } else if (RTDB.dataPath() == "/valve") {
                 Valve.setState(RTDB.to<bool>());
             }

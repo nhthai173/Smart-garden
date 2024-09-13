@@ -76,7 +76,7 @@ void GenericInput::loop() {
 
 #ifdef USE_FIREBASE_RTDB
         if (millis() - lastChangeTime >= _reportStateDelay) {
-            _setRTDBState();   
+            _setRTDBState();
         } else {
             _allHoldCBExecuted = false;
         }

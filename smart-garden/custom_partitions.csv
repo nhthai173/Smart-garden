@@ -5,4 +5,4 @@ app0,     app,  ota_0,   ,        1536K,
 app1,     app,  ota_1,   ,        1536K,
 eeprom,   data, 0x99,    ,        0x1000,
 spiffs,   data, spiffs,  ,        512K,
-coredump, data, coredump,,        64K
+coredump, data, coredump,,        64K,
