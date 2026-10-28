@@ -1,0 +1,8 @@
+version: "1.0.0"
+description: >
+  Lưu cấu hình khoá-giá trị trên NVS cho ESP-IDF. Getter luôn có giá trị mặc
+  định nên firmware chạy được ngay từ NVS trống. Hỗ trợ gom ghi rồi commit
+  một lần. Bản ESP-IDF của thư viện ENVFile.
+url: https://github.com/nht173/nht_store
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

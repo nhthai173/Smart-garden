@@ -1,0 +1,8 @@
+version: "1.0.0"
+description: >
+  Cảm biến cơ bản cho ESP-IDF: đọc ADC one-shot có hiệu chuẩn và lọc trung
+  vị (nht_adc), và đếm xung bằng phần cứng PCNT với bộ đếm 64 bit không quay
+  vòng (nht_pulse, dùng cho lưu lượng kế/công tơ).
+url: https://github.com/nht173/nht_sensor
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

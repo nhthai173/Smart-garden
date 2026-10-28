@@ -1,0 +1,8 @@
+version: "1.0.0"
+description: >
+  Đầu vào rời rạc chống nhiễu cho ESP-IDF: Schmitt trigger hai ngưỡng cộng
+  trễ bất đối xứng. Dành cho cảm biến hay dao động quanh ngưỡng (ngập nước,
+  phao mức, độ ẩm đất). Logic thuần, test được trên máy.
+url: https://github.com/nht173/nht_dinput
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

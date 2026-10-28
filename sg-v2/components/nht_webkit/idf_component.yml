@@ -1,0 +1,9 @@
+version: "1.0.0"
+description: >
+  Máy chủ HTTP + WebSocket + OTA qua LAN cho ESP-IDF. Phục vụ trang nhúng
+  dạng gzip, tiện ích đáp JSON và đọc tham số, phát WebSocket bất đồng bộ
+  tới mọi client, endpoint nạp firmware ghi thẳng vào partition OTA theo
+  từng khối (không đệm cả ảnh vào RAM), và chế độ captive portal.
+url: https://github.com/nht173/nht_webkit
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

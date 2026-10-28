@@ -1,0 +1,10 @@
+version: "1.0.0"
+description: >
+  Điều khiển van nước cho ESP-IDF: van bi động cơ (có chiều + hành trình +
+  mở một phần) và van điện từ thường đóng, sau một API chung. Có trần thời
+  gian chạy cứng, khoá an toàn, và luôn đóng van lúc khởi động.
+url: https://github.com/nht173/nht_valve
+license: MIT
+# Cần nht_actuator (khai báo qua REQUIRES trong CMakeLists, không qua
+# registry - hai component này đi cùng nhau trong cùng một repo).
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

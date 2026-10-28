@@ -1,0 +1,580 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Garden</title>
+<style>
+  :root{
+    --bg:#f4f6f4; --card:#fff; --fg:#1a1f1a; --muted:#6b756b;
+    --line:#e2e7e2; --accent:#2e7d4f; --accent-soft:#e6f2ea;
+    --warn:#b45309; --danger:#c0392b; --radius:14px;
+  }
+  @media(prefers-color-scheme:dark){
+    :root{
+      --bg:#121513; --card:#1b1f1c; --fg:#e8ece8; --muted:#98a298;
+      --line:#2a302b; --accent:#4ea87a; --accent-soft:#1e2f26;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:560px;margin:0 auto;padding:16px 14px 40px}
+
+  header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  header h1{font-size:19px;margin:0;flex:1;font-weight:600}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--danger);
+       flex:none;transition:background .3s}
+  .dot.on{background:var(--accent)}
+  header small{color:var(--muted);font-size:12px}
+
+  nav{display:flex;gap:4px;background:var(--card);padding:4px;
+      border-radius:var(--radius);margin-bottom:14px;border:1px solid var(--line)}
+  nav button{flex:1;border:0;background:none;color:var(--muted);padding:9px 4px;
+             border-radius:10px;font:inherit;font-size:13px;cursor:pointer}
+  nav button.sel{background:var(--accent-soft);color:var(--accent);font-weight:600}
+
+  .card{background:var(--card);border:1px solid var(--line);
+        border-radius:var(--radius);padding:16px;margin-bottom:12px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;
+           color:var(--muted);margin:0 0 12px;font-weight:600}
+
+  .valve{text-align:center;padding:8px 0 16px}
+  .valve .st{font-size:30px;font-weight:600;letter-spacing:-.02em}
+  .valve .st.open{color:var(--accent)}
+  .valve .sub{color:var(--muted);font-size:13px;margin-top:2px;min-height:20px}
+
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  button.b{flex:1;min-width:70px;border:1px solid var(--line);background:var(--card);
+           color:var(--fg);padding:11px 8px;border-radius:10px;font:inherit;
+           cursor:pointer}
+  button.b:active{transform:scale(.97)}
+  button.b.pri{background:var(--accent);border-color:var(--accent);color:#fff;
+               font-weight:600}
+  button.b.dan{color:var(--danger);border-color:var(--danger)}
+  button.b:disabled{opacity:.45;cursor:not-allowed}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat{background:var(--bg);border-radius:10px;padding:10px 12px}
+  .stat .k{color:var(--muted);font-size:11px;text-transform:uppercase;
+           letter-spacing:.04em}
+  .stat .v{font-size:17px;font-weight:600;margin-top:2px}
+  .stat .v.bad{color:var(--danger)}
+
+  .alert{background:#fdecea;color:#8e2c22;border-radius:10px;padding:10px 12px;
+         font-size:13px;margin-bottom:12px;display:none}
+  @media(prefers-color-scheme:dark){.alert{background:#3a1f1c;color:#f0a99f}}
+  .alert.show{display:block}
+
+  .row{display:flex;align-items:center;gap:10px;padding:10px 0;
+       border-bottom:1px solid var(--line)}
+  .row:last-child{border:0}
+  .row .t{flex:1}
+  .row .t b{font-size:16px;font-variant-numeric:tabular-nums}
+  .row .t small{display:block;color:var(--muted);font-size:12px}
+  .row.off .t{opacity:.45}
+  .icon{border:0;background:none;color:var(--muted);cursor:pointer;
+        font-size:15px;padding:6px}
+
+  label{display:block;margin-bottom:10px;font-size:13px;color:var(--muted)}
+  input,select{width:100%;margin-top:4px;padding:9px 10px;border-radius:9px;
+               border:1px solid var(--line);background:var(--bg);color:var(--fg);
+               font:inherit}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .days{display:flex;gap:5px;margin:4px 0 12px}
+  .days span{flex:1;text-align:center;padding:7px 0;border-radius:8px;
+             border:1px solid var(--line);font-size:12px;cursor:pointer;
+             user-select:none}
+  .days span.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  .sw{position:relative;width:40px;height:23px;flex:none}
+  .sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;
+            cursor:pointer;z-index:1}
+  .sw i{position:absolute;inset:0;background:var(--line);border-radius:12px;
+        transition:.2s}
+  .sw i:after{content:"";position:absolute;width:17px;height:17px;left:3px;top:3px;
+              background:#fff;border-radius:50%;transition:.2s}
+  .sw input:checked + i{background:var(--accent)}
+  .sw input:checked + i:after{transform:translateX(17px)}
+
+  .bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;
+       margin-top:8px;display:none}
+  .bar.show{display:block}
+  .bar i{display:block;height:100%;background:var(--accent);width:0;
+         transition:width .2s}
+
+  .kv{display:flex;justify-content:space-between;padding:6px 0;font-size:13px}
+  .kv span:first-child{color:var(--muted)}
+  .kv span:last-child{font-variant-numeric:tabular-nums}
+
+  .toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,80px);
+         background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:20px;
+         font-size:13px;transition:transform .25s;z-index:9}
+  .toast.show{transform:translate(-50%,0)}
+  .hide{display:none}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="dot" id="dot"></span>
+    <h1 id="devname">Smart Garden</h1>
+    <small id="ip"></small>
+  </header>
+
+  <nav>
+    <button class="sel" data-tab="home">Tưới</button>
+    <button data-tab="sched">Lịch</button>
+    <button data-tab="cfg">Cấu hình</button>
+    <button data-tab="sys">Hệ thống</button>
+  </nav>
+
+  <div class="alert" id="alert"></div>
+
+  <!-- ========== TƯỚI ========== -->
+  <section id="home">
+    <div class="card">
+      <div class="valve">
+        <div class="st" id="vstate">—</div>
+        <div class="sub" id="vsub"></div>
+      </div>
+      <div class="btns">
+        <button class="b" data-run="300">5 phút</button>
+        <button class="b" data-run="900">15 phút</button>
+        <button class="b" data-run="1800">30 phút</button>
+      </div>
+      <div class="btns" style="margin-top:8px">
+        <button class="b pri" id="btnrun">Tưới</button>
+        <button class="b dan" id="btnstop">Dừng</button>
+      </div>
+      <label style="margin-top:12px">Thời lượng tuỳ chọn (phút)
+        <input type="number" id="mins" min="1" max="120" value="10">
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Cảm biến</h2>
+      <div class="grid">
+        <div class="stat"><div class="k">Ngập nước</div>
+          <div class="v" id="s_leak">—</div></div>
+        <div class="stat"><div class="k">Điện áp</div>
+          <div class="v" id="s_volt">—</div></div>
+        <div class="stat"><div class="k">Lưu lượng</div>
+          <div class="v" id="s_flow">—</div></div>
+        <div class="stat"><div class="k">Tổng nước</div>
+          <div class="v" id="s_total">—</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== LỊCH ========== -->
+  <section id="sched" class="hide">
+    <div class="card">
+      <h2>Lịch tưới</h2>
+      <div id="schedlist"></div>
+    </div>
+    <div class="card">
+      <h2 id="formtitle">Thêm lịch</h2>
+      <div class="two">
+        <label>Giờ<input type="number" id="f_h" min="0" max="23" value="6"></label>
+        <label>Phút<input type="number" id="f_m" min="0" max="59" value="0"></label>
+      </div>
+      <label>Lặp lại</label>
+      <div class="days" id="f_days"></div>
+      <div class="two">
+        <label>Thời lượng (phút)
+          <input type="number" id="f_dur" min="1" max="120" value="15"></label>
+        <label>Mức mở van (%)
+          <input type="number" id="f_lv" min="10" max="100" step="10" value="100"></label>
+      </div>
+      <div class="btns">
+        <button class="b pri" id="f_save">Lưu</button>
+        <button class="b" id="f_cancel">Huỷ</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== CẤU HÌNH ========== -->
+  <section id="cfg" class="hide">
+    <div class="card">
+      <h2>Van</h2>
+      <label>Loại van
+        <select id="c_valve_type">
+          <option value="0">Van điện từ (cấp điện = mở)</option>
+          <option value="1">Van bi động cơ</option>
+        </select>
+      </label>
+      <div class="two">
+        <label>Hành trình van bi (ms)
+          <input type="number" id="c_travel_ms"></label>
+        <label>Trễ bật bơm (ms)
+          <input type="number" id="c_pump_delay_ms"></label>
+      </div>
+      <div class="two">
+        <label>Tưới mặc định (giây)
+          <input type="number" id="c_run_default_s"></label>
+        <label>Trần tối đa (giây)
+          <input type="number" id="c_run_max_s"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Cảm biến ngập</h2>
+      <label style="display:flex;align-items:center;gap:10px">
+        <span style="flex:1">Đọc analog (2 điện cực)</span>
+        <span class="sw"><input type="checkbox" id="c_leak_analog"><i></i></span>
+      </label>
+      <div class="two">
+        <label>Ngưỡng vào ngập
+          <input type="number" id="c_leak_thr_on"></label>
+        <label>Ngưỡng hết ngập
+          <input type="number" id="c_leak_thr_off"></label>
+      </div>
+      <div class="two">
+        <label>Giữ để báo ngập (ms)
+          <input type="number" id="c_leak_hold_on_ms"></label>
+        <label>Giữ để hết ngập (ms)
+          <input type="number" id="c_leak_hold_off_ms"></label>
+      </div>
+      <div class="kv"><span>Giá trị đọc hiện tại</span><span id="rawnow">—</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Khác</h2>
+      <div class="two">
+        <label>Xung / lít<input type="number" id="c_flow_pulses_per_l"></label>
+        <label>Hệ số chia áp<input type="number" step="0.01" id="c_volt_scale"></label>
+      </div>
+      <div class="two">
+        <label>Múi giờ (giây)<input type="number" id="c_tz_offset_s"></label>
+        <label>Cửa sổ bù giờ (giây)<input type="number" id="c_catchup_window_s"></label>
+      </div>
+      <label>Tên thiết bị<input id="c_dev_name"></label>
+      <button class="b pri" id="cfgsave">Lưu cấu hình</button>
+    </div>
+
+    <div class="card">
+      <h2>WiFi</h2>
+      <label>Mạng
+        <select id="w_ssid"><option value="">— chọn mạng —</option></select>
+      </label>
+      <label>Mật khẩu<input type="password" id="w_pass"></label>
+      <div class="btns">
+        <button class="b" id="wscan">Quét</button>
+        <button class="b pri" id="wsave">Kết nối</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Firebase</h2>
+      <label>Database URL<input id="c_fb_db_url" placeholder="https://....firebaseio.com"></label>
+      <label>API key<input id="c_fb_api_key"></label>
+      <div class="two">
+        <label>Email<input id="c_fb_email"></label>
+        <label>Mật khẩu<input type="password" id="c_fb_pass"></label>
+      </div>
+      <label>Device ID<input id="c_fb_device_id"></label>
+      <button class="b pri" id="fbsave">Lưu Firebase</button>
+    </div>
+  </section>
+
+  <!-- ========== HỆ THỐNG ========== -->
+  <section id="sys" class="hide">
+    <div class="card">
+      <h2>Thông tin</h2>
+      <div id="info"></div>
+    </div>
+    <div class="card">
+      <h2>Nạp firmware (OTA)</h2>
+      <label>Chọn file firmware.bin<input type="file" id="fw" accept=".bin"></label>
+      <button class="b pri" id="otago">Nạp</button>
+      <div class="bar" id="otabar"><i></i></div>
+    </div>
+    <div class="card">
+      <h2>Nguy hiểm</h2>
+      <div class="btns">
+        <button class="b" id="restart">Khởi động lại</button>
+        <button class="b dan" id="factory">Xoá cấu hình</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const DAYS = ['CN','T2','T3','T4','T5','T6','T7'];
+let ST = {}, CFG = {}, editId = 0, mask = 127, tick = null;
+
+function toast(m){
+  const t = $('#toast'); t.textContent = m; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+async function api(path, opt){
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+const post = (p, body) => api(p, {
+  method:'POST', headers:{'Content-Type':'application/json'},
+  body: body ? JSON.stringify(body) : undefined
+});
+
+/* ---- tabs ---- */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('sel'));
+  b.classList.add('sel');
+  ['home','sched','cfg','sys'].forEach(id =>
+    $('#'+id).classList.toggle('hide', id !== b.dataset.tab));
+  if(b.dataset.tab === 'sched') loadSched();
+  if(b.dataset.tab === 'cfg')   loadCfg();
+  if(b.dataset.tab === 'sys')   loadInfo();
+});
+
+/* ---- trạng thái ---- */
+function fmt(s){
+  s = Math.max(0, s|0);
+  const m = Math.floor(s/60);
+  return m ? m + 'p ' + String(s%60).padStart(2,'0') + 's' : s + 's';
+}
+function render(){
+  const open = ST.valve === 'open' || ST.valve === 'opening';
+  const names = {open:'ĐANG TƯỚI', opening:'ĐANG MỞ', closing:'ĐANG ĐÓNG',
+                 closed:'ĐÃ ĐÓNG'};
+  const e = $('#vstate');
+  e.textContent = names[ST.valve] || '—';
+  e.className = 'st' + (open ? ' open' : '');
+
+  $('#vsub').textContent = open && ST.remaining_s
+      ? 'Còn ' + fmt(ST.remaining_s) : (ST.source ? 'Nguồn: ' + ST.source : '');
+
+  $('#s_leak').textContent = ST.water_leak ? 'CÓ NGẬP' : 'Bình thường';
+  $('#s_leak').className = 'v' + (ST.water_leak ? ' bad' : '');
+  $('#s_volt').textContent = (ST.voltage || 0).toFixed(1) + ' V';
+  $('#s_volt').className = 'v' + (ST.voltage_low ? ' bad' : '');
+  $('#s_flow').textContent = (ST.flow_lpm || 0).toFixed(1) + ' L/p';
+  $('#s_total').textContent = (ST.flow_total_l || 0).toFixed(1) + ' L';
+  $('#rawnow').textContent = ST.leak_raw;
+
+  const a = $('#alert');
+  let msg = '';
+  if(ST.water_leak) msg = '⚠ Phát hiện ngập nước — van đang bị khoá.';
+  else if(ST.voltage_low) msg = '⚠ Điện áp nguồn thấp.';
+  else if(ST.time_valid === false) msg = 'Chưa đồng bộ được giờ — lịch tưới tạm dừng.';
+  a.textContent = msg;
+  a.classList.toggle('show', !!msg);
+
+  $('#btnrun').disabled = ST.water_leak;
+  clearInterval(tick);
+  if(open && ST.remaining_s > 0){
+    tick = setInterval(() => {
+      if(--ST.remaining_s <= 0) clearInterval(tick);
+      $('#vsub').textContent = 'Còn ' + fmt(ST.remaining_s);
+    }, 1000);
+  }
+}
+
+/* ---- websocket, có dự phòng hỏi lại định kỳ ---- */
+let ws, poll;
+function connect(){
+  ws = new WebSocket('ws://' + location.host + '/ws');
+  ws.onopen = () => {
+    $('#dot').classList.add('on');
+    clearInterval(poll);
+    ws.send('GET');
+  };
+  ws.onmessage = e => { ST = JSON.parse(e.data); render(); };
+  ws.onclose = () => {
+    $('#dot').classList.remove('on');
+    clearInterval(poll);
+    poll = setInterval(refresh, 3000);
+    setTimeout(connect, 4000);
+  };
+  ws.onerror = () => ws.close();
+}
+async function refresh(){
+  try { ST = await api('/api/status'); render(); $('#dot').classList.add('on'); }
+  catch(e){ $('#dot').classList.remove('on'); }
+}
+
+/* ---- điều khiển ---- */
+document.querySelectorAll('[data-run]').forEach(b => b.onclick = () => run(+b.dataset.run));
+$('#btnrun').onclick = () => run(($('#mins').value|0) * 60);
+$('#btnstop').onclick = async () => {
+  try { await post('/api/water?stop=1'); toast('Đã dừng'); }
+  catch(e){ toast(e.message); }
+};
+async function run(sec){
+  try { ST = await post('/api/water?seconds=' + sec); render(); toast('Bắt đầu tưới'); }
+  catch(e){ toast(e.message); }
+}
+
+/* ---- lịch ---- */
+DAYS.forEach((d,i) => {
+  const s = document.createElement('span');
+  s.textContent = d; s.className = 'on';
+  s.onclick = () => { mask ^= (1<<i); s.classList.toggle('on'); };
+  $('#f_days').appendChild(s);
+});
+function setMask(m){
+  mask = m;
+  [...$('#f_days').children].forEach((s,i) => s.classList.toggle('on', !!(m & (1<<i))));
+}
+function maskStr(m){
+  if(m === 127) return 'Hằng ngày';
+  return DAYS.filter((_,i) => m & (1<<i)).join(' ') || 'Một lần';
+}
+async function loadSched(){
+  const list = await api('/api/schedules');
+  const box = $('#schedlist');
+  box.innerHTML = list.length ? '' :
+    '<div style="color:var(--muted);font-size:13px">Chưa có lịch nào.</div>';
+
+  list.forEach(t => {
+    const d = document.createElement('div');
+    d.className = 'row' + (t.enabled ? '' : ' off');
+    d.innerHTML =
+      '<div class="t"><b>' + String(t.hour).padStart(2,'0') + ':' +
+      String(t.minute).padStart(2,'0') + '</b><small>' + maskStr(t.repeat) +
+      ' · ' + Math.round(t.duration_s/60) + ' phút' +
+      (t.level < 100 ? ' · ' + t.level + '%' : '') + '</small></div>' +
+      '<span class="sw"><input type="checkbox"' + (t.enabled ? ' checked' : '') +
+      '><i></i></span>' +
+      '<button class="icon" title="Sửa">✎</button>' +
+      '<button class="icon" title="Xoá">✕</button>';
+
+    d.querySelector('input').onchange = e =>
+      save(t.id, t.hour, t.minute, t.repeat, t.duration_s, t.level, e.target.checked);
+    d.querySelectorAll('button')[0].onclick = () => {
+      editId = t.id; $('#formtitle').textContent = 'Sửa lịch #' + t.id;
+      $('#f_h').value = t.hour; $('#f_m').value = t.minute;
+      $('#f_dur').value = Math.round(t.duration_s/60); $('#f_lv').value = t.level;
+      setMask(t.repeat);
+      $('#f_h').scrollIntoView({behavior:'smooth'});
+    };
+    d.querySelectorAll('button')[1].onclick = async () => {
+      await api('/api/schedules?id=' + t.id, {method:'DELETE'});
+      toast('Đã xoá'); loadSched();
+    };
+    box.appendChild(d);
+  });
+}
+async function save(id, h, m, rep, dur, lv, en){
+  try {
+    await post('/api/schedules',
+      {id, hour:h, minute:m, repeat:rep, duration_s:dur, level:lv, enabled:en});
+    toast('Đã lưu'); loadSched(); resetForm();
+  } catch(e){ toast(e.message); }
+}
+function resetForm(){
+  editId = 0; $('#formtitle').textContent = 'Thêm lịch'; setMask(127);
+}
+$('#f_save').onclick = () => save(editId, $('#f_h').value|0, $('#f_m').value|0,
+    mask, ($('#f_dur').value|0)*60, $('#f_lv').value|0, true);
+$('#f_cancel').onclick = resetForm;
+
+/* ---- cấu hình ---- */
+const CFG_KEYS = ['valve_type','travel_ms','pump_delay_ms','run_default_s',
+  'run_max_s','leak_thr_on','leak_thr_off','leak_hold_on_ms','leak_hold_off_ms',
+  'flow_pulses_per_l','volt_scale','tz_offset_s','catchup_window_s','dev_name'];
+const FB_KEYS = ['fb_db_url','fb_api_key','fb_email','fb_pass','fb_device_id'];
+
+async function loadCfg(){
+  CFG = await api('/api/config');
+  CFG_KEYS.forEach(k => { const e = $('#c_'+k); if(e) e.value = CFG[k]; });
+  $('#c_leak_analog').checked = CFG.leak_analog;
+  FB_KEYS.forEach(k => { const e = $('#c_'+k); if(e && CFG[k]) e.value = CFG[k]; });
+  $('#devname').textContent = CFG.dev_name;
+}
+function collect(keys){
+  const o = {};
+  keys.forEach(k => {
+    const e = $('#c_'+k);
+    if(!e || e.value === '') return;
+    o[k] = e.type === 'number' ? +e.value : e.value;
+  });
+  return o;
+}
+$('#cfgsave').onclick = async () => {
+  const o = collect(CFG_KEYS);
+  o.leak_analog = $('#c_leak_analog').checked;
+  try { await post('/api/config', o); toast('Đã lưu — khởi động lại để áp dụng'); }
+  catch(e){ toast(e.message); }
+};
+$('#fbsave').onclick = async () => {
+  try { await post('/api/config', collect(FB_KEYS));
+        toast('Đã lưu Firebase — khởi động lại để áp dụng'); }
+  catch(e){ toast(e.message); }
+};
+
+/* ---- wifi ---- */
+$('#wscan').onclick = async () => {
+  toast('Đang quét…');
+  const nets = await api('/api/wifi/scan');
+  const sel = $('#w_ssid');
+  sel.innerHTML = '<option value="">— chọn mạng —</option>';
+  nets.forEach(n => {
+    const o = document.createElement('option');
+    o.value = n.ssid;
+    o.textContent = n.ssid + '  (' + n.rssi + 'dBm' + (n.secure ? ' 🔒' : '') + ')';
+    sel.appendChild(o);
+  });
+  toast(nets.length + ' mạng');
+};
+$('#wsave').onclick = async () => {
+  const ssid = $('#w_ssid').value;
+  if(!ssid) return toast('Chọn mạng đã');
+  try { await post('/api/wifi', {ssid, pass:$('#w_pass').value});
+        toast('Đang kết nối…'); }
+  catch(e){ toast(e.message); }
+};
+
+/* ---- hệ thống ---- */
+async function loadInfo(){
+  const i = await api('/api/info');
+  $('#devname').textContent = i.device;
+  $('#ip').textContent = i.ip;
+  const rows = [
+    ['Firmware', i.fw + ' (build ' + i.build + ')'],
+    ['Chip', i.chip + ' · IDF ' + i.idf],
+    ['Device ID', i.device_id],
+    ['Địa chỉ IP', i.ip + ' (' + i.net + ')'],
+    ['Sóng WiFi', i.rssi + ' dBm'],
+    ['Heap còn', (i.heap/1024).toFixed(1) + ' KB (thấp nhất ' +
+                 (i.heap_min/1024).toFixed(1) + ' KB)'],
+    ['Thời gian chạy', fmt(i.uptime_s)],
+    ['Khởi động lại vì', i.last_reset],
+  ];
+  $('#info').innerHTML = rows.map(r =>
+    '<div class="kv"><span>' + r[0] + '</span><span>' + r[1] + '</span></div>').join('');
+}
+$('#otago').onclick = () => {
+  const f = $('#fw').files[0];
+  if(!f) return toast('Chọn file .bin đã');
+
+  const bar = $('#otabar');
+  bar.classList.add('show');
+  const x = new XMLHttpRequest();
+  x.open('POST', '/update');
+  x.upload.onprogress = e =>
+    bar.firstElementChild.style.width = (e.loaded/e.total*100) + '%';
+  x.onload = () => {
+    toast(x.status === 200 ? 'Nạp xong, đang khởi động lại…' : 'Nạp thất bại');
+    if(x.status === 200) setTimeout(() => location.reload(), 12000);
+  };
+  x.onerror = () => toast('Mất kết nối khi nạp');
+  x.send(f);
+};
+$('#restart').onclick = async () => {
+  if(!confirm('Khởi động lại thiết bị?')) return;
+  await post('/api/restart'); toast('Đang khởi động lại…');
+};
+$('#factory').onclick = async () => {
+  if(!confirm('Xoá toàn bộ cấu hình và lịch tưới? Không hoàn tác được.')) return;
+  await post('/api/factory'); toast('Đã xoá, đang khởi động lại…');
+};
+
+/* ---- khởi động ---- */
+refresh();
+loadInfo();
+connect();
+</script>

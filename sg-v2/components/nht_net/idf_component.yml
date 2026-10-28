@@ -1,0 +1,8 @@
+version: "1.0.0"
+description: >
+  WiFi STA cho ESP-IDF với tự kết nối lại theo giãn cách tăng dần, tự dự
+  phòng sang SoftAP kèm captive portal DNS khi không vào được mạng, và đồng
+  bộ giờ SNTP. Không hàm nào chặn luồng gọi.
+url: https://github.com/nht173/nht_net
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

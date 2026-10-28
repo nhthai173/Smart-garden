@@ -1,0 +1,237 @@
+{
+  "version": 1,
+  "author": "Smart Garden v2",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-c3-devkitm-1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "r1",
+      "top": -80,
+      "left": 130,
+      "attrs": {
+        "color": "red",
+        "label": "R1 nguồn van"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "r2",
+      "top": -80,
+      "left": 170,
+      "attrs": {
+        "color": "yellow",
+        "label": "R2 chiều van"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "r3",
+      "top": -80,
+      "left": 210,
+      "attrs": {
+        "color": "blue",
+        "label": "R3 bơm"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "r4",
+      "top": -80,
+      "left": 250,
+      "attrs": {
+        "color": "green",
+        "label": "R4 nguồn AC"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rr1",
+      "top": -20,
+      "left": 130,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rr2",
+      "top": -20,
+      "left": 170,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rr3",
+      "top": -20,
+      "left": 210,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "rr4",
+      "top": -20,
+      "left": 250,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "leak",
+      "top": 120,
+      "left": -140,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "volt",
+      "top": 240,
+      "left": -140,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "flow",
+      "top": 120,
+      "left": 180,
+      "attrs": {
+        "label": "Xung lưu lượng",
+        "color": "blue"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "esp:5",
+      "rr1:1",
+      "red",
+      []
+    ],
+    [
+      "rr1:2",
+      "r1:A",
+      "red",
+      []
+    ],
+    [
+      "r1:C",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "esp:6",
+      "rr2:1",
+      "yellow",
+      []
+    ],
+    [
+      "rr2:2",
+      "r2:A",
+      "yellow",
+      []
+    ],
+    [
+      "r2:C",
+      "esp:GND.2",
+      "black",
+      []
+    ],
+    [
+      "esp:7",
+      "rr3:1",
+      "blue",
+      []
+    ],
+    [
+      "rr3:2",
+      "r3:A",
+      "blue",
+      []
+    ],
+    [
+      "r3:C",
+      "esp:GND.3",
+      "black",
+      []
+    ],
+    [
+      "esp:10",
+      "rr4:1",
+      "green",
+      []
+    ],
+    [
+      "rr4:2",
+      "r4:A",
+      "green",
+      []
+    ],
+    [
+      "r4:C",
+      "esp:GND.4",
+      "black",
+      []
+    ],
+    [
+      "leak:GND",
+      "esp:GND.5",
+      "black",
+      []
+    ],
+    [
+      "leak:VCC",
+      "esp:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "leak:SIG",
+      "esp:3",
+      "green",
+      []
+    ],
+    [
+      "volt:GND",
+      "esp:GND.6",
+      "black",
+      []
+    ],
+    [
+      "volt:VCC",
+      "esp:3V3.1",
+      "red",
+      []
+    ],
+    [
+      "volt:SIG",
+      "esp:4",
+      "green",
+      []
+    ],
+    [
+      "flow:1.l",
+      "esp:GND.7",
+      "black",
+      []
+    ],
+    [
+      "flow:2.l",
+      "esp:0",
+      "blue",
+      []
+    ]
+  ],
+  "dependencies": {}
+}

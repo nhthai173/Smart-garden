@@ -1,0 +1,49 @@
+{
+  "rules": {
+    "$uid": {
+      ".read":  "auth != null && auth.uid === $uid",
+      ".write": "auth != null && auth.uid === $uid",
+
+      "$device_id": {
+        "//": "Hai chiều KHÔNG giao nhau. Đây là chỗ chặn ở tầng máy chủ để",
+        "//2": "thiết bị không thể tự nghe lại cái nó vừa ghi - nguyên nhân",
+        "//3": "gốc của lỗi tưới sai thời lượng ở bản trước.",
+
+        "desired": {
+          ".read":  "auth.uid === $uid",
+          ".write": "auth.uid === $uid",
+          "valve": {
+            ".validate": "newData.hasChild('cmd')",
+            "cmd":        { ".validate": "newData.val() === 'open' || newData.val() === 'close'" },
+            "duration_s": { ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 7200" },
+            "level":      { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 100" },
+            "id":         { ".validate": "newData.isNumber()" },
+            "$other":     { ".validate": false }
+          },
+          "schedules": {
+            "$i": {
+              "hour":       { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 23" },
+              "minute":     { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 59" },
+              "repeat":     { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 127" },
+              "duration_s": { ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 7200" },
+              "level":      { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 100" },
+              "enabled":    { ".validate": "newData.isBoolean()" },
+              "$other":     { ".validate": false }
+            }
+          },
+          "cmd": { ".validate": "newData.val() === 'restart' || newData.val() === null" }
+        },
+
+        "reported": {
+          ".read":  "auth.uid === $uid",
+          ".write": "auth.uid === $uid"
+        },
+
+        "info": {
+          ".read":  "auth.uid === $uid",
+          ".write": "auth.uid === $uid"
+        }
+      }
+    }
+  }
+}
