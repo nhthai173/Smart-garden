@@ -456,7 +456,7 @@ void setup() {
     WaterLeak.onChange([]() {
         notifyState();
     });
-    WaterLeak.onHoldState(true, 5000L, []() {
+    WaterLeak.onHoldState(true, 20000L, []() {
         Valve.close(true);
 #if defined(ENABLE_LOGGER)
         logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
@@ -464,14 +464,14 @@ void setup() {
         logger.logTele("🚨 Phát hiện ngập nước");
 #endif // ENABLE_LOGGER
     });
-    WaterLeak.onHoldState(false, 5000L, []() {
+    WaterLeak.onHoldState(false, 20000L, []() {
 #if defined(ENABLE_LOGGER)
         logger.log("WATER_LEAK", "SENSOR", WaterLeak.getStateString());
         logger.logTele("🚰 Nước đã hết ngập");
 #endif // ENABLE_LOGGER
     });
 #if defined(ENABLE_NFIREBASE)
-    WaterLeak.setDatabaseReportStateDelay(5000L);
+    WaterLeak.setDatabaseReportStateDelay(20000L);
 #endif
 
 #if defined(ENABLE_SERVER)
@@ -758,7 +758,7 @@ bool connectWiFi() {
     unsigned long start = millis();
     Serial.printf("Connecting to %s\n", WIFI_SSID);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFiClass::status() != WL_CONNECTED) {
+    while (WiFi.status() != WL_CONNECTED) {
         if (millis() - start > 20000) { // timeout after 20 seconds
             Serial.println("Connection failed");
             return false;
