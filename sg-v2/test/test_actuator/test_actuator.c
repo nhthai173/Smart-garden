@@ -1,14 +1,14 @@
 /**
- * Hồi quy cho nht_actuator.
- * test_repeated_on_* là bản thu nhỏ của lỗi "tưới 60 giây thay vì 15 phút"
- * ở bản Arduino trước: một lệnh bật lặp lại làm mất thời lượng đã đặt.
+ * Regression tests for nht_actuator.
+ * test_repeated_on_* is a miniature of the "60 seconds instead of 15 minutes" bug
+ * of the earlier Arduino build: a repeated on command lost the duration already set.
  */
 #include <unity.h>
 #include <string.h>
 #include "nht_actuator.h"
 
 static nht_act_t A;
-static bool  pin_level;       /* mức logic THẬT ghi ra chân */
+static bool  pin_level;       /* the REAL logic level written to the pin */
 static int   writes;
 static nht_act_event_t last_ev;
 static int   ev_count;
@@ -46,7 +46,7 @@ static void mk(uint32_t auto_off_ms, uint32_t on_delay_ms, bool active_high)
 void setUp(void)    { mk(60000, 0, true); }
 void tearDown(void) { }
 
-/* --- cơ bản --- */
+/* --- basics --- */
 
 static void test_on_off(void)
 {
@@ -63,10 +63,10 @@ static void test_on_off(void)
 
 static void test_active_low_inverts_pin(void)
 {
-    mk(0, 0, false);                  /* relay kích mức thấp */
-    TEST_ASSERT_TRUE(pin_level);      /* tắt  -> chân ở mức CAO */
+    mk(0, 0, false);                  /* active-low relay */
+    TEST_ASSERT_TRUE(pin_level);      /* off -> pin HIGH */
     nht_act_on(&A, 0);
-    TEST_ASSERT_FALSE(pin_level);     /* bật  -> chân ở mức THẤP */
+    TEST_ASSERT_FALSE(pin_level);     /* on  -> pin LOW  */
     nht_act_off(&A, 1000);
     TEST_ASSERT_TRUE(pin_level);
 }
@@ -86,12 +86,12 @@ static void test_zero_auto_off_stays_on(void)
 {
     mk(0, 0, true);
     nht_act_on(&A, 0);
-    nht_act_tick(&A, 86400000u);      /* cả ngày */
+    nht_act_tick(&A, 86400000u);      /* a whole day */
     TEST_ASSERT_TRUE(nht_act_is_on(&A));
     TEST_ASSERT_EQUAL_UINT32(0, nht_act_remaining_ms(&A, 1000));
 }
 
-/* --- LỖI v1: lệnh bật lặp lại làm mất thời lượng --- */
+/* --- v1 BUG: a repeated on command lost the duration --- */
 
 static void test_repeated_on_for_is_idempotent(void)
 {
@@ -100,12 +100,12 @@ static void test_repeated_on_for_is_idempotent(void)
     TEST_ASSERT_EQUAL(NHT_ACT_OK, nht_act_on_for(&A, FIFTEEN_MIN, 0));
     TEST_ASSERT_EQUAL_UINT32(FIFTEEN_MIN, nht_act_remaining_ms(&A, 0));
 
-    /* Lệnh y hệt dội về sau 2 giây (event đồng bộ từ cloud chẳng hạn).
-       Hạn phải KHÔNG đổi - không dời, không rút ngắn. */
+    /* The identical command echoes back after 2 seconds (a sync event from the cloud, say).
+       The deadline must NOT change - neither moved nor shortened. */
     nht_act_on_for(&A, FIFTEEN_MIN, 2000);
     TEST_ASSERT_EQUAL_UINT32(FIFTEEN_MIN - 2000, nht_act_remaining_ms(&A, 2000));
 
-    /* Và van vẫn mở sau mốc 60 giây - chính là chỗ v1 đóng sớm. */
+    /* And the valve is still open after the 60-second mark - exactly where v1 closed early. */
     nht_act_tick(&A, 61000);
     TEST_ASSERT_TRUE(nht_act_is_on(&A));
 
@@ -118,7 +118,7 @@ static void test_plain_on_does_not_clobber_custom_duration(void)
     const uint32_t FIFTEEN_MIN = 900000u;
     nht_act_on_for(&A, FIFTEEN_MIN, 0);
 
-    /* on() trần trụi khi đang bật KHÔNG được kéo hạn về auto_off_ms (60s). */
+    /* A bare on() while already on must NOT pull the deadline back to auto_off_ms (60 s). */
     TEST_ASSERT_EQUAL(NHT_ACT_OK, nht_act_on(&A, 5000));
     TEST_ASSERT_EQUAL_UINT32(FIFTEEN_MIN - 5000, nht_act_remaining_ms(&A, 5000));
 
@@ -132,12 +132,12 @@ static void test_sync_is_guarded(void)
     nht_act_on_for(&A, FIFTEEN_MIN, 0);
     int writes_before = writes;
 
-    /* Trạng thái báo về trùng trạng thái hiện tại -> không được làm gì cả. */
+    /* A reported state equal to the current one -> must do nothing at all. */
     TEST_ASSERT_EQUAL(NHT_ACT_OK, nht_act_sync(&A, true, 3000));
     TEST_ASSERT_EQUAL_INT(writes_before, writes);
     TEST_ASSERT_EQUAL_UINT32(FIFTEEN_MIN - 3000, nht_act_remaining_ms(&A, 3000));
 
-    /* Khác trạng thái thì mới thực sự tắt. */
+    /* Only a different state really switches it off. */
     TEST_ASSERT_EQUAL(NHT_ACT_OK, nht_act_sync(&A, false, 4000));
     TEST_ASSERT_FALSE(nht_act_is_on(&A));
 }
@@ -149,7 +149,7 @@ static void test_extend_adds_from_now(void)
     TEST_ASSERT_EQUAL_UINT32(12000, nht_act_remaining_ms(&A, 3000));
 }
 
-/* --- trễ bật --- */
+/* --- turn-on delay --- */
 
 static void test_on_delay(void)
 {
@@ -165,11 +165,11 @@ static void test_on_delay(void)
     TEST_ASSERT_TRUE(nht_act_is_on(&A));
     TEST_ASSERT_TRUE(pin_level);
 
-    /* Thời lượng đếm từ lúc ĐÓNG MẠCH, không phải từ lúc nhận lệnh. */
+    /* The duration counts from when the circuit CLOSES, not from when the command arrived. */
     TEST_ASSERT_EQUAL_UINT32(60000, nht_act_remaining_ms(&A, 8000));
 }
 
-/* --- khoá an toàn --- */
+/* --- safety inhibit --- */
 
 static void test_inhibit_forces_off_and_blocks(void)
 {
@@ -188,7 +188,7 @@ static void test_inhibit_forces_off_and_blocks(void)
     TEST_ASSERT_EQUAL(NHT_ACT_OK, nht_act_on(&A, 3000));
 }
 
-/* --- chống đảo nhanh --- */
+/* --- anti-chatter --- */
 
 static void test_min_off_blocks_rapid_restart(void)
 {
@@ -218,12 +218,12 @@ static void test_min_on_blocks_early_off_but_force_wins(void)
     TEST_ASSERT_EQUAL(NHT_ACT_ERR_MIN_ON, nht_act_off(&A, 1000));
     TEST_ASSERT_TRUE(nht_act_is_on(&A));
 
-    /* Dừng khẩn cấp phải luôn thắng - an toàn không được xếp sau tuổi thọ bơm. */
+    /* An emergency stop must always win - safety is not queued behind pump lifetime. */
     TEST_ASSERT_EQUAL(NHT_ACT_OK, nht_act_off_force(&A, 1000));
     TEST_ASSERT_FALSE(nht_act_is_on(&A));
 }
 
-/* --- tràn millis --- */
+/* --- millis() wrap-around --- */
 
 static void test_survives_tick_wraparound(void)
 {
@@ -232,7 +232,7 @@ static void test_survives_tick_wraparound(void)
     nht_act_on(&A, near_max);
     TEST_ASSERT_TRUE(nht_act_is_on(&A));
 
-    /* Vượt qua mốc tràn 32 bit. */
+    /* Cross the 32-bit wrap point. */
     nht_act_tick(&A, near_max + 59000u);
     TEST_ASSERT_TRUE(nht_act_is_on(&A));
 

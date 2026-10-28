@@ -1,7 +1,7 @@
-"""Gộp bootloader + bảng partition + app thành một ảnh flash duy nhất.
+"""Merge the bootloader + partition table + app into a single flash image.
 
-Wokwi (và mọi công cụ nạp một-file) cần ảnh gộp chứ không phải riêng
-firmware.bin. Chạy tự động sau mỗi lần build.
+Wokwi (and every single-file flasher) needs the merged image, not firmware.bin
+alone. Runs automatically after every build.
 """
 import os
 import subprocess
@@ -27,8 +27,8 @@ def merge(source, target, env):  # noqa: ARG001
                      "esptool.py"),
         "--chip", "esp32c3", "merge_bin",
         "-o", out, "--flash_mode", "dio", "--flash_size", "4MB",
-        # Đệm đầy tới hết dung lượng flash. Trình mô phỏng nạp thẳng file này
-        # làm toàn bộ flash; ảnh ngắn thì phần còn lại không xác định.
+        # Pad to the full flash size. The simulator loads this file as the whole
+        # flash; with a short image the remainder would be undefined.
         "--fill-flash-size", "4MB",
     ]
     for addr, path in parts:
@@ -36,10 +36,10 @@ def merge(source, target, env):  # noqa: ARG001
 
     try:
         subprocess.run(cmd, check=True, capture_output=True)
-        print("Ảnh gộp cho Wokwi: %s (%d KB)"
+        print("Merged image for Wokwi: %s (%d KB)"
               % (out, os.path.getsize(out) // 1024))
     except Exception as e:  # noqa: BLE001
-        print("Không gộp được ảnh flash: %s" % e)
+        print("Could not merge the flash image: %s" % e)
 
 
 env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", merge)  # noqa: F821

@@ -1,3 +1,10 @@
+/**
+ * @file    app_boot.c
+ * @brief   Records why the chip reset.
+ *
+ * See app_boot.h.
+ */
+
 #include "app_boot.h"
 
 static esp_reset_reason_t g_reason;

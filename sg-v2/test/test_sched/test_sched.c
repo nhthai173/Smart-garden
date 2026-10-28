@@ -1,8 +1,8 @@
 /**
- * Hồi quy cho nht_sched.
- * Hai test quan trọng nhất tái hiện đúng hai lỗi của bản Arduino trước:
- *   - test_catchup_*  : lịch bị bỏ khi vòng lặp trễ quá một phút
- *   - test_update_*   : update() báo thành công mà không sửa gì
+ * Regression tests for nht_sched.
+ * The two most important tests reproduce exactly the two bugs of the earlier Arduino build:
+ *   - test_catchup_*  : the schedule dropped when the loop was more than a minute late
+ *   - test_update_*   : update() reported success while changing nothing
  */
 #include <unity.h>
 #include <string.h>
@@ -12,7 +12,7 @@ typedef struct { uint16_t duration_s; uint8_t level; } payload_t;
 
 static nht_sched_t S;
 
-/* 2026-08-26 là thứ Tư. day = 20691, wday = 3. */
+/* 2026-08-26 is a Wednesday. day = 20691, wday = 3. */
 #define DAY_WED 20691u
 
 static nht_time_t at(uint32_t day, uint8_t wday, uint8_t h, uint8_t m, uint8_t s)
@@ -37,7 +37,7 @@ static uint8_t add_task(uint8_t h, uint8_t m, uint8_t mask, uint16_t dur)
 void setUp(void)    { nht_sched_init(&S, NHT_SCHED_DEFAULT_CATCHUP_S); }
 void tearDown(void) { }
 
-/* --- cơ bản --- */
+/* --- basics --- */
 
 static void test_due_at_exact_time(void)
 {
@@ -61,20 +61,20 @@ static void test_not_due_before_time(void)
 
 static void test_no_time_no_run(void)
 {
-    /* Chưa đồng bộ SNTP (day == 0) thì tuyệt đối không được kích lịch. */
+    /* Before SNTP sync (day == 0) a schedule must absolutely not fire. */
     add_task(6, 0, NHT_SCHED_REPEAT_DAILY, 900);
     nht_time_t now = at(0, 3, 6, 0, 0);
     TEST_ASSERT_EQUAL(0, nht_sched_due(&S, &now, NULL));
 }
 
-/* --- LỖI v1 #1: bỏ lịch khi tick bị trễ --- */
+/* --- v1 BUG #1: schedule dropped when the tick was late --- */
 
 static void test_catchup_runs_when_tick_is_late(void)
 {
     add_task(6, 0, NHT_SCHED_REPEAT_DAILY, 900);
 
-    /* Thiết bị bận OTA / TLS handshake, mãi 6h03 mới quay lại kiểm tra.
-       Cách khớp đúng-phút của v1 sẽ bỏ luôn lịch hôm nay. */
+    /* The device was busy with OTA / a TLS handshake and only checks again at 06:03.
+       v1's exact-minute matching would drop today's run altogether. */
     nht_time_t late = at(DAY_WED, 3, 6, 3, 0);
     TEST_ASSERT_NOT_EQUAL(0, nht_sched_due(&S, &late, NULL));
 }
@@ -82,7 +82,7 @@ static void test_catchup_runs_when_tick_is_late(void)
 static void test_catchup_gives_up_after_window(void)
 {
     add_task(6, 0, NHT_SCHED_REPEAT_DAILY, 900);
-    /* Trễ 11 phút, quá cửa sổ 10 phút -> bỏ hôm nay, không tưới lúc trưa. */
+    /* 11 minutes late, beyond the 10-minute window -> skip today, do not water at noon. */
     nht_time_t too_late = at(DAY_WED, 3, 6, 11, 0);
     TEST_ASSERT_EQUAL(0, nht_sched_due(&S, &too_late, NULL));
 }
@@ -94,18 +94,18 @@ static void test_runs_only_once_per_day(void)
     nht_time_t t1 = at(DAY_WED, 3, 6, 0, 0);
     TEST_ASSERT_NOT_EQUAL(0, nht_sched_due(&S, &t1, NULL));
 
-    /* Mọi tick còn lại trong cửa sổ bù không được kích lại. */
+    /* Every later tick inside the catch-up window must not fire it again. */
     for (int s = 1; s < 600; s += 7) {
         nht_time_t t = at(DAY_WED, 3, 6, (uint8_t)(s / 60), (uint8_t)(s % 60));
         TEST_ASSERT_EQUAL(0, nht_sched_due(&S, &t, NULL));
     }
 
-    /* Hôm sau thì chạy tiếp. */
+    /* The next day it runs again. */
     nht_time_t tomorrow = at(DAY_WED + 1, 4, 6, 0, 0);
     TEST_ASSERT_NOT_EQUAL(0, nht_sched_due(&S, &tomorrow, NULL));
 }
 
-/* --- LỖI v1 #2: update() không sửa được gì --- */
+/* --- v1 BUG #2: update() changed nothing --- */
 
 static void test_update_actually_persists(void)
 {
@@ -118,7 +118,7 @@ static void test_update_actually_persists(void)
 
     TEST_ASSERT_TRUE(nht_sched_update(&S, &t));
 
-    /* Đọc lại TỪ MẢNG THẬT, không phải từ bản sao vừa truyền vào. */
+    /* Read back FROM THE REAL ARRAY, not from the copy that was passed in. */
     const nht_sched_task_t *back = nht_sched_find(&S, id);
     TEST_ASSERT_EQUAL_UINT8(30, back->minute);
 
@@ -143,7 +143,7 @@ static void test_update_time_allows_rerun_today(void)
     nht_time_t morning = at(DAY_WED, 3, 6, 0, 0);
     TEST_ASSERT_NOT_EQUAL(0, nht_sched_due(&S, &morning, NULL));
 
-    /* Đổi sang 18h00 thì chiều nay phải chạy được, dù sáng đã chạy rồi. */
+    /* Moved to 18:00: it must be able to run this afternoon, even though it ran this morning. */
     nht_sched_task_t t = *nht_sched_find(&S, id);
     t.hour = 18; t.minute = 0;
     TEST_ASSERT_TRUE(nht_sched_update(&S, &t));
@@ -152,7 +152,7 @@ static void test_update_time_allows_rerun_today(void)
     TEST_ASSERT_NOT_EQUAL(0, nht_sched_due(&S, &evening, NULL));
 }
 
-/* --- lặp theo thứ --- */
+/* --- repeat by weekday --- */
 
 static void test_weekday_mask(void)
 {
@@ -209,18 +209,18 @@ static void test_table_full(void)
     TEST_ASSERT_FALSE(nht_sched_add(&S, &t, NULL));
 }
 
-/* --- đổi thời gian --- */
+/* --- time conversion --- */
 
 static void test_time_from_unix(void)
 {
     /* 2026-08-26 12:00:00 UTC = 20691*86400 + 43200 = 1787745600
-       +07:00 -> 19:00 cùng ngày, thứ Tư */
+       +07:00 -> 19:00 the same day, a Wednesday */
     nht_time_t t;
     nht_time_from_unix(1787745600LL, 7 * 3600, &t);
     TEST_ASSERT_EQUAL_UINT32(DAY_WED, t.day);
     TEST_ASSERT_EQUAL_UINT8(19, t.hour);
     TEST_ASSERT_EQUAL_UINT8(0, t.minute);
-    TEST_ASSERT_EQUAL_UINT8(3, t.wday);   /* thứ Tư */
+    TEST_ASSERT_EQUAL_UINT8(3, t.wday);   /* Wednesday */
 }
 
 static void test_next_in(void)

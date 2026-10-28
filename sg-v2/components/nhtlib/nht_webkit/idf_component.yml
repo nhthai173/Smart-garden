@@ -1,0 +1,9 @@
+version: "1.1.0"
+description: >
+  HTTP + WebSocket + LAN OTA server for ESP-IDF. Serves an embedded gzip
+  page, JSON reply and query helpers, non-blocking WebSocket broadcast, a
+  firmware upload endpoint that writes straight to the OTA partition block
+  by block, and a captive-portal mode.
+url: https://github.com/nhthai173/Smart-garden
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

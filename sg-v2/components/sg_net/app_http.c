@@ -1,9 +1,10 @@
 /**
- * app_http.c - API cục bộ + giao diện web.
+ * @file    app_http.c
+ * @brief   Local API and web UI.
  *
- * Tầng này là ADAPTER: nó dịch HTTP thành lời gọi vào app_water rồi thôi.
- * Không có mẩu logic tưới nào ở đây. Rút mọi thứ liên quan tới mạng ra thì
- * thiết bị vẫn tưới đúng lịch.
+ * This layer is an ADAPTER: it turns HTTP into calls to app_water and nothing more.
+ * There is no watering logic here. Remove everything network-related and the
+ * device still waters on schedule.
  */
 
 #include "app_http.h"
@@ -93,8 +94,8 @@ static esp_err_t h_water(httpd_req_t *r)
         return nht_web_json(r, "{\"ok\":true}");
     }
 
-    /* strtol, không phải strtoul: "-5" qua strtoul thành ~4 tỷ và van mở hết
-       trần. Số không hợp lệ (<=0) = dùng mặc định; số lớn để water_open kẹp. */
+    /* strtol, not strtoul: "-5" through strtoul becomes ~4 billion and the valve
+       opens to the ceiling. An invalid number (<=0) takes the default; a large one is left to water_open to clamp. */
     uint32_t seconds = 0;
     uint8_t  level   = 0;
     if (nht_web_query(r, "seconds", v, sizeof(v)) > 0) {
@@ -222,7 +223,7 @@ static esp_err_t h_config_post(httpd_req_t *r)
     cJSON_Delete(j);
 
     app_cfg_save();
-    water_apply_cfg();   /* ngưỡng, thời lượng, cửa sổ bù có hiệu lực ngay */
+    water_apply_cfg();   /* thresholds, durations and the catch-up window take effect at once */
 
     char buf[192];
     snprintf(buf, sizeof(buf),
@@ -282,8 +283,8 @@ static esp_err_t h_restart(httpd_req_t *r)
 
 static esp_err_t h_factory_reset(httpd_req_t *r)
 {
-    /* Đóng van trước khi xoá cấu hình: sau khi reset, mọi thông số về mặc
-       định, không nên để van đang mở với cấu hình cũ. */
+    /* Close the valve before erasing the settings: after the reset every value
+       returns to its default, and the valve should not be left open under the old settings. */
     water_close(WSRC_SAFETY);
     water_sched_clear();
     app_cfg_factory_reset();
@@ -294,7 +295,7 @@ static esp_err_t h_factory_reset(httpd_req_t *r)
 }
 
 /* ------------------------------------------------------------------ */
-/* WebSocket: đẩy trạng thái, nhận lệnh ngắn                          */
+/* WebSocket: push the status, accept short commands                  */
 /* ------------------------------------------------------------------ */
 
 static void on_ws_message(httpd_req_t *r, const char *text, void *user)
@@ -318,7 +319,7 @@ static void on_water_change(const water_status_t *st, void *user)
     (void)st; (void)user;
     if (nht_web_ws_client_count() == 0) return;
 
-    /* Chạy trong task điều khiển (stack nhỏ): bộ đệm lên heap. */
+    /* Runs in the control task (small stack): the buffer goes on the heap. */
     char *buf = malloc(JSON_MAX);
     if (!buf) return;
     water_status_json(buf, JSON_MAX);
@@ -330,7 +331,7 @@ static void on_ota_done(bool ok, void *user)
 {
     (void)user;
     if (!ok) return;
-    /* Đóng van trước khi khởi động lại - không để nước chảy suốt lúc reboot. */
+    /* Close the valve before restarting - do not let water run during the reboot. */
     water_close(WSRC_SAFETY);
     xTaskCreate(restart_later, "restart", 2048, NULL, 5, NULL);
 }

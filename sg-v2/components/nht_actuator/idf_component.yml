@@ -1,8 +1,0 @@
-version: "1.0.0"
-description: >
-  Đầu ra có trạng thái cho ESP-IDF: tự tắt theo thời lượng, trễ bật, chống
-  đảo nhanh, khoá an toàn, callback sự kiện. Ghi mức logic qua hook nên dùng
-  được với GPIO, PCF8574 hay đầu ra ảo. Logic thuần, test được trên máy.
-url: https://github.com/nht173/nht_actuator
-license: MIT
-targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

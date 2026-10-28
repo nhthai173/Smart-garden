@@ -1,0 +1,8 @@
+version: "1.1.0"
+description: >
+  WiFi station for ESP-IDF with gradual automatic reconnect, strongest-AP
+  selection on mesh networks, a SoftAP + captive-portal fallback, and SNTP
+  time sync. No function blocks the caller.
+url: https://github.com/nhthai173/Smart-garden
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

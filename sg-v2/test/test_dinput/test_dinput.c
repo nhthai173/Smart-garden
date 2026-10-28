@@ -1,8 +1,8 @@
 /**
- * Hồi quy cho nht_dinput.
- * test_flapping_* tái hiện đúng bệnh báo ảo của bản Arduino trước: cảm biến
- * ngập nước bị ẩm, tín hiệu dao động quanh ngưỡng, báo ngập/hết ngập qua lại
- * suốt hàng giờ.
+ * Regression tests for nht_dinput.
+ * test_flapping_* reproduces exactly the false-alarm disease of the earlier Arduino
+ * build: a damp leak sensor, the signal wobbling around the threshold, leak/no-leak
+ * alternating for hours.
  */
 #include <unity.h>
 #include <string.h>
@@ -10,8 +10,8 @@
 
 #define THR_ON   2400
 #define THR_OFF  1200
-#define HOLD_ON     5000u    /* 5 giây  */
-#define HOLD_OFF  600000u    /* 10 phút */
+#define HOLD_ON     5000u    /* 5 seconds  */
+#define HOLD_OFF  600000u    /* 10 minutes */
 
 static nht_dinput_t IN;
 static int cb_calls;
@@ -38,7 +38,7 @@ static void mk(bool analog)
 void setUp(void)    { mk(true); }
 void tearDown(void) { }
 
-/* Nạp `raw` liên tục trong `ms` mili giây, mỗi 200ms một mẫu. */
+/* Feed `raw` continuously for `ms` milliseconds, one sample every 200 ms. */
 static uint32_t hold(uint16_t raw, uint32_t ms, uint32_t t0)
 {
     for (uint32_t t = 0; t <= ms; t += 200)
@@ -46,12 +46,12 @@ static uint32_t hold(uint16_t raw, uint32_t ms, uint32_t t0)
     return t0 + ms;
 }
 
-/* --- cơ bản --- */
+/* --- basics --- */
 
 static void test_needs_hold_to_assert(void)
 {
     nht_dinput_feed(&IN, 3000, 0);
-    TEST_ASSERT_FALSE(nht_dinput_active(&IN));       /* chưa đủ giờ */
+    TEST_ASSERT_FALSE(nht_dinput_active(&IN));       /* not long enough yet */
 
     hold(3000, HOLD_ON - 400, 0);
     TEST_ASSERT_FALSE(nht_dinput_active(&IN));
@@ -66,7 +66,7 @@ static void test_asymmetric_hold(void)
     uint32_t t = hold(3000, HOLD_ON + 400, 0);
     TEST_ASSERT_TRUE(nht_dinput_active(&IN));
 
-    /* Khô hẳn, nhưng mới 1 phút - chưa đủ 10 phút nên VẪN báo ngập. */
+    /* Fully dry, but only 1 minute - short of 10 minutes, so it is STILL flooded. */
     t = hold(500, 60000, t);
     TEST_ASSERT_TRUE(nht_dinput_active(&IN));
 
@@ -75,20 +75,20 @@ static void test_asymmetric_hold(void)
     TEST_ASSERT_EQUAL_UINT32(2, IN.transitions);
 }
 
-/* --- LỖI v1: dao động quanh ngưỡng sinh chuỗi báo giả --- */
+/* --- v1 BUG: wobbling around the threshold made a chain of false alarms --- */
 
 static void test_flapping_around_threshold_gives_one_transition(void)
 {
     uint32_t t = 0;
 
-    /* Cảm biến ẩm: giá trị nhảy quanh vùng giữa hai ngưỡng suốt 3 tiếng.
-       Không mẫu nào chạm THR_OFF, nên sau khi đã công nhận "ngập" thì
-       KHÔNG được có thêm chuyển trạng thái nào nữa. */
-    t = hold(3000, HOLD_ON + 400, t);         /* ngập thật */
+    /* A damp sensor: the value jumps around the band between the two thresholds for 3 hours.
+       No sample touches THR_OFF, so once "flooded" is accepted there must be NO
+       further state change. */
+    t = hold(3000, HOLD_ON + 400, t);         /* a real leak */
     TEST_ASSERT_TRUE(nht_dinput_active(&IN));
 
     const uint16_t noise[] = { 2350, 1900, 2500, 1450, 2600, 1300, 2200, 1800 };
-    for (int cycle = 0; cycle < 900; cycle++) {  /* ~3 tiếng */
+    for (int cycle = 0; cycle < 900; cycle++) {  /* ~3 hours */
         for (unsigned i = 0; i < sizeof(noise) / sizeof(noise[0]); i++) {
             t += 1500;
             nht_dinput_feed(&IN, noise[i], t);
@@ -96,7 +96,7 @@ static void test_flapping_around_threshold_gives_one_transition(void)
     }
 
     TEST_ASSERT_TRUE(nht_dinput_active(&IN));
-    TEST_ASSERT_EQUAL_UINT32(1, IN.transitions);   /* v1 sinh ra hàng chục */
+    TEST_ASSERT_EQUAL_UINT32(1, IN.transitions);   /* v1 produced dozens */
     TEST_ASSERT_EQUAL_INT(1, cb_calls);
 }
 
@@ -104,7 +104,7 @@ static void test_brief_dry_dip_does_not_clear(void)
 {
     uint32_t t = hold(3000, HOLD_ON + 400, 0);
 
-    /* Tụt hẳn xuống dưới THR_OFF nhưng chỉ 30 giây rồi ướt lại. */
+    /* Drops fully below THR_OFF but only for 30 seconds, then wet again. */
     t = hold(300, 30000, t);
     t = hold(3000, 30000, t);
 
@@ -114,13 +114,13 @@ static void test_brief_dry_dip_does_not_clear(void)
 
 static void test_schmitt_deadband_blocks_assert(void)
 {
-    /* Đang khô, tín hiệu nằm giữa hai ngưỡng mãi -> không bao giờ thành ngập. */
+    /* Dry, with the signal sitting between the thresholds forever -> never becomes a leak. */
     hold(1800, HOLD_ON * 10, 0);
     TEST_ASSERT_FALSE(nht_dinput_active(&IN));
     TEST_ASSERT_EQUAL_UINT32(0, IN.transitions);
 }
 
-/* --- chế độ digital --- */
+/* --- digital mode --- */
 
 static void test_digital_mode(void)
 {
@@ -129,7 +129,7 @@ static void test_digital_mode(void)
     TEST_ASSERT_TRUE(nht_dinput_active(&IN));
 
     t = hold(0, 60000, t);
-    TEST_ASSERT_TRUE(nht_dinput_active(&IN));      /* trễ ra vẫn áp dụng */
+    TEST_ASSERT_TRUE(nht_dinput_active(&IN));      /* the exit delay still applies */
 
     hold(0, HOLD_OFF + 1000, t);
     TEST_ASSERT_FALSE(nht_dinput_active(&IN));
@@ -151,19 +151,19 @@ static void test_analog_inverted(void)
     IN.inverted = true;
     nht_dinput_init(&IN, NHT_DIN_INACTIVE);
 
-    /* Đảo: giá trị THẤP nghĩa là có nước. 4095-500 = 3595 >= THR_ON. */
+    /* Inverted: a LOW value means water. 4095-500 = 3595 >= THR_ON. */
     hold(500, HOLD_ON + 400, 0);
     TEST_ASSERT_TRUE(nht_dinput_active(&IN));
 }
 
-/* --- cấu hình hỏng --- */
+/* --- broken configuration --- */
 
 static void test_swapped_thresholds_are_repaired(void)
 {
     memset(&IN, 0, sizeof(IN));
     IN.analog  = true;
     IN.thr_on  = 2000;
-    IN.thr_off = 2500;          /* đảo ngược - Schmitt sẽ mất tác dụng */
+    IN.thr_off = 2500;          /* inverted - the Schmitt trigger would stop working */
     nht_dinput_init(&IN, NHT_DIN_INACTIVE);
     TEST_ASSERT_TRUE(IN.thr_off < IN.thr_on);
 }

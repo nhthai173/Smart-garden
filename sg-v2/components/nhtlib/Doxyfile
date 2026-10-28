@@ -1,0 +1,23 @@
+# Minimal Doxygen configuration for nhtlib.  Run: doxygen Doxyfile
+PROJECT_NAME           = "nhtlib"
+PROJECT_BRIEF          = "Reusable ESP-IDF components for unattended IoT devices"
+OUTPUT_DIRECTORY       = docs
+INPUT                  = README.md \
+                         nht_actuator/include nht_valve/include nht_dinput/include \
+                         nht_sched/include nht_store/include nht_sensor/include \
+                         nht_net/include nht_webkit/include nht_fbrtdb/include
+FILE_PATTERNS          = *.h *.md
+USE_MDFILE_AS_MAINPAGE = README.md
+RECURSIVE              = YES
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = NO
+EXTRACT_ALL            = NO
+EXTRACT_STATIC         = NO
+OPTIMIZE_OUTPUT_FOR_C  = YES
+MARKDOWN_SUPPORT       = YES
+GENERATE_LATEX         = NO
+GENERATE_HTML          = YES
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_NO_PARAMDOC       = NO
+PREDEFINED             = __cplusplus

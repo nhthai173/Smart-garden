@@ -1,7 +1,0 @@
-version: "1.0.0"
-description: >
-  Lịch theo giờ-trong-ngày cho ESP-IDF, có cửa sổ bù giờ và payload do ứng
-  dụng tự định nghĩa. Logic thuần, biên dịch được trên máy để unit test.
-url: https://github.com/nht173/nht_sched
-license: MIT
-targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

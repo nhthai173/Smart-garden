@@ -1,0 +1,9 @@
+version: "1.0.0"
+description: >
+  Noise-tolerant discrete input for ESP-IDF: two-threshold Schmitt trigger
+  plus asymmetric hold times. For sensors that wobble around a threshold
+  (leak probes, float switches, soil moisture). Pure logic; unit-testable
+  on a PC.
+url: https://github.com/nhthai173/Smart-garden
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

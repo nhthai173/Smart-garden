@@ -1,3 +1,11 @@
+/**
+ * @file    app_water.c
+ * @brief   Watering logic: control task, fault handling, schedule storage.
+ *
+ * The control task is event-driven (see ctl_task). Every fault source is gathered in
+ * eval_faults(); any fault closes the valve at once and locks it shut.
+ */
+
 #include "app_water.h"
 #include "app_cfg.h"
 #include "board_config.h"
@@ -23,29 +31,29 @@
 static const char *TAG = "water";
 
 #define WATER_MAX_LISTENERS 4
-/* Vòng điều khiển KHÔNG quay đều theo nhịp: nó ngủ cho tới khi có sự kiện
-   (lệnh, hạn của van, một trong ba timer lấy mẫu dưới đây). */
+/* The control loop does NOT spin at a fixed rate: it sleeps until an event arrives
+   (a command, a valve deadline, or one of the three sampling timers below). */
 #define LEAK_SAMPLE_MS      200
-#define SLOW_SAMPLE_MS     1000   /* điện áp; lưu lượng cứ 5 lần một lần   */
+#define SLOW_SAMPLE_MS     1000   /* supply voltage; flow every 5th sample  */
 #define SCHED_CHECK_MS     1000
-#define MAX_SLEEP_MS       1000   /* trần ngủ: còn phải nuôi watchdog      */
+#define MAX_SLEEP_MS       1000   /* sleep ceiling: the watchdog must be fed */
 
-#define EV_CMD    (1u << 0)       /* có lệnh/đổi cấu hình: tính lại hạn   */
+#define EV_CMD    (1u << 0)       /* a command / settings change: recompute deadlines */
 #define EV_LEAK   (1u << 1)
 #define EV_SLOW   (1u << 2)
 #define EV_SCHED  (1u << 3)
 
-/* Chống nhiễu cho đường an toàn: sự cố cảm biến/nguồn phải lặp lại mới tính,
-   và phải ổn định mới được gỡ - không để một cú nhiễu đóng/mở van liên tục. */
-#define LEAK_FAIL_MAX       3     /* lần đọc ADC hỏng liên tiếp            */
-#define LEAK_RECOVER_OK     5     /* lần đọc tốt liên tiếp để gỡ           */
-#define VOLT_BAD_N          3     /* mẫu thấp liên tiếp (3 s)              */
-#define VOLT_GOOD_N         5     /* mẫu tốt liên tiếp để gỡ               */
+/* Noise immunity for the safety path: a sensor/supply fault must repeat to count,
+   and must be stable to clear - so one burst of noise cannot toggle the valve. */
+#define LEAK_FAIL_MAX       3     /* consecutive failed ADC reads          */
+#define LEAK_RECOVER_OK     5     /* consecutive good reads to clear       */
+#define VOLT_BAD_N          3     /* consecutive low samples (3 s)         */
+#define VOLT_GOOD_N         5     /* consecutive good samples to clear     */
 #define VOLT_HYST_V         0.3f
 
 NHT_SCHED_ASSERT_PAYLOAD(water_task_t);
 
-/* Lịch tưới nằm cùng partition với cấu hình nhưng khác namespace. */
+/* The schedule lives in the same partition as the settings but another namespace. */
 #define SCHED_PARTITION "nvs_cfg"
 #define SCHED_NAMESPACE "sched"
 #define SCHED_KEY       "tasks"
@@ -102,7 +110,7 @@ const char *water_src_str(water_src_t s)
 }
 
 /* ------------------------------------------------------------------ */
-/* Trạng thái + thông báo                                             */
+/* Status and notifications                                           */
 /* ------------------------------------------------------------------ */
 
 static void refresh_status(void)
@@ -121,7 +129,7 @@ static void refresh_status(void)
     ST.time_valid = (nowt > 1700000000);
 }
 
-/** Đánh thức vòng điều khiển để nó tính lại hạn kế tiếp. Gọi từ task nào cũng được. */
+/** Wake the control loop so it recomputes the next deadline. Callable from any task. */
 static void poke(uint32_t ev)
 {
     if (CTL) xTaskNotify(CTL, ev, eSetBits);
@@ -171,7 +179,7 @@ void water_get_status(water_status_t *out)
 }
 
 /* ------------------------------------------------------------------ */
-/* Lưu / nạp lịch tưới                                                */
+/* Saving and loading the schedule                                    */
 /* ------------------------------------------------------------------ */
 
 static void sched_persist(void)
@@ -193,7 +201,7 @@ static void sched_restore(void)
 
     if (err == ESP_OK && want == sizeof(tmp)) {
         SCHED = tmp;
-        /* Cửa sổ bù có thể đã đổi trong cấu hình kể từ lần ghi. */
+        /* The catch-up window may have changed in the settings since this was saved. */
         SCHED.catchup_window_s = app_cfg()->catchup_window_s;
         ESP_LOGI(TAG, "nạp %u lịch tưới từ NVS", SCHED.count);
     } else {
@@ -203,7 +211,7 @@ static void sched_restore(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Sự kiện van                                                        */
+/* Valve events                                                       */
 /* ------------------------------------------------------------------ */
 
 static void on_valve_event(nht_valve_t *v, nht_valve_event_t ev, void *user)
@@ -232,11 +240,11 @@ static void eval_faults(uint32_t t);
 static void on_leak_change(nht_dinput_t *in, nht_din_state_t st, void *user)
 {
     (void)in; (void)user; (void)st;
-    eval_faults(now_ms());      /* đọc lại trạng thái cảm biến, đóng van nếu cần */
+    eval_faults(now_ms());      /* re-read the sensor state, close the valve if needed */
 }
 
-/* Gộp MỌI nguồn sự cố về một chỗ. Có bit nào bật là gửi lệnh ĐÓNG ngay trong
-   cùng lần gọi - không đợi chu kỳ sau, không đợi tick. */
+/* Gather EVERY fault source in one place. As soon as any bit is set the CLOSE command
+   is sent in the same call - not next cycle, not next tick. */
 static void eval_faults(uint32_t t)
 {
     uint8_t m = 0;
@@ -260,8 +268,8 @@ static void eval_faults(uint32_t t)
     FAULTS = m;
 
     nht_valve_set_inhibit(&V, m != 0, t);
-    /* Đai và dây lưng: nếu vì lý do gì đó van chưa nằm trên đường đóng thì
-       ép đóng bất chấp mọi ràng buộc. */
+    /* Belt and braces: if for any reason the valve is not already on its way to
+       closing, force it shut regardless of any constraint. */
     if (rising && nht_valve_state(&V) != NHT_VALVE_CLOSED &&
         nht_valve_state(&V) != NHT_VALVE_CLOSING)
         nht_valve_close_force(&V, t);
@@ -269,7 +277,7 @@ static void eval_faults(uint32_t t)
 }
 
 /* ------------------------------------------------------------------ */
-/* Lệnh                                                               */
+/* Commands                                                           */
 /* ------------------------------------------------------------------ */
 
 nht_valve_err_t water_open(uint32_t seconds, uint8_t level, water_src_t src)
@@ -305,7 +313,7 @@ nht_valve_err_t water_close(water_src_t src)
 }
 
 /* ------------------------------------------------------------------ */
-/* CRUD lịch                                                          */
+/* Schedule CRUD                                                     */
 /* ------------------------------------------------------------------ */
 
 bool water_sched_add(uint8_t hour, uint8_t minute, uint8_t repeat_mask,
@@ -406,8 +414,8 @@ bool water_sched_replace_json(const char *json)
     if (!cJSON_IsArray(root)) { cJSON_Delete(root); return false; }
 
     lock();
-    /* Giữ lại last_run_day của các lịch trùng giờ để đồng bộ từ cloud không
-       làm lịch đã chạy sáng nay chạy lại lần nữa. */
+    /* Keep last_run_day of schedules at the same time so a cloud sync does not
+       rerun a schedule that already ran this morning. */
     nht_sched_t old = SCHED;
     nht_sched_clear(&SCHED);
     SCHED.catchup_window_s = app_cfg()->catchup_window_s;
@@ -482,14 +490,14 @@ int water_status_json(char *buf, size_t len)
 }
 
 /* ------------------------------------------------------------------ */
-/* Vòng điều khiển                                                    */
+/* Control loop                                                       */
 /* ------------------------------------------------------------------ */
 
 static void read_leak(uint32_t t)
 {
     uint16_t raw = 0;
     if (app_cfg()->leak_analog) {
-        if (!leak_adc_ok) return;      /* WF_LEAK_SENSOR đã bật từ eval_faults */
+        if (!leak_adc_ok) return;      /* WF_LEAK_SENSOR was already raised by eval_faults */
         esp_err_t err = ESP_OK;
 #if defined(SG_BENCH)
         if (bench_leak_fail) err = ESP_FAIL;
@@ -498,8 +506,8 @@ static void read_leak(uint32_t t)
         err = nht_adc_read_raw(&LEAK_ADC, &raw);
 
         if (err != ESP_OK) {
-            /* Cảm biến hỏng KHÔNG được im lặng bỏ qua: không đọc được nghĩa là
-               không còn biết có ngập hay không. */
+            /* A broken sensor must NOT be silently ignored: if we cannot read it
+               we no longer know whether there is a leak. */
             if (leak_fail < 255) leak_fail++;
             leak_good = 0;
             return;
@@ -529,7 +537,7 @@ static void read_slow(uint32_t t)
                 }
             }
         } else {
-            /* Không đo được nguồn thì không dám chạy motor. */
+            /* If the supply cannot be measured, do not dare run the motor. */
             if (volt_bad < 255) volt_bad++;
             volt_good = 0;
         }
@@ -545,7 +553,7 @@ static void read_slow(uint32_t t)
 static void check_schedule(void)
 {
     time_t nowt = time(NULL);
-    if (nowt < 1700000000) return;    /* chưa đồng bộ SNTP */
+    if (nowt < 1700000000) return;    /* SNTP not synced yet */
 
     nht_time_t lt;
     nht_time_from_unix((int64_t)nowt, app_cfg()->tz_offset_s, &lt);
@@ -557,23 +565,23 @@ static void check_schedule(void)
         memcpy(&p, due.payload, sizeof(p));
         ESP_LOGI(TAG, "lịch #%u tới hạn (%02u:%02u) -> tưới %us mức %u%%",
                  id, due.hour, due.minute, p.duration_s, p.level_pct);
-        sched_persist();          /* ghi lại last_run_day */
+        sched_persist();          /* save last_run_day */
         water_open(p.duration_s, p.level_pct, WSRC_SCHEDULE);
     }
 }
 
-/* Callback của esp_timer chạy trong task esp_timer: chỉ đánh thức, không xử lý. */
+/* esp_timer callback, runs in the esp_timer task: only wakes the loop, does no work. */
 static void on_timer(void *arg)
 {
     poke((uint32_t)(uintptr_t)arg);
 }
 
 /**
- * Vòng điều khiển theo SỰ KIỆN. Nó chỉ thức dậy khi:
- *   - có lệnh hoặc đổi cấu hình (EV_CMD),
- *   - tới hạn của van (hết hành trình, hết thời lượng, hết trễ bơm...),
- *   - một timer lấy mẫu nổ (cảm biến ngập, nguồn, lịch).
- * Không có việc thì ngủ, tối đa MAX_SLEEP_MS để còn nuôi watchdog.
+ * EVENT-driven control loop. It wakes only when:
+ *   - there is a command or a settings change (EV_CMD),
+ *   - a valve deadline arrives (end of travel, end of run time, pump delay...),
+ *   - a sampling timer fires (leak sensor, supply, schedule).
+ * With nothing to do it sleeps, at most MAX_SLEEP_MS so the watchdog is still fed.
  */
 static void ctl_task(void *arg)
 {
@@ -581,7 +589,7 @@ static void ctl_task(void *arg)
     ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
 
     nht_valve_state_t prev = nht_valve_state(&V);
-    uint32_t pending = EV_LEAK | EV_SLOW | EV_SCHED;    /* vòng đầu: đọc hết */
+    uint32_t pending = EV_LEAK | EV_SLOW | EV_SCHED;    /* first pass: read everything */
 
     while (1) {
         lock();
@@ -605,13 +613,13 @@ static void ctl_task(void *arg)
 
         esp_task_wdt_reset();
 #if defined(SG_BENCH)
-        if (bench_stall_ms) {          /* mô phỏng task treo cứng */
+        if (bench_stall_ms) {          /* simulate a hard-hung task */
             uint32_t ms = bench_stall_ms; bench_stall_ms = 0;
             ESP_LOGW(TAG, "BENCH: treo ctl %u ms", (unsigned)ms);
             vTaskDelay(pdMS_TO_TICKS(ms));
         }
 #endif
-        /* +1 tick: pdMS_TO_TICKS làm tròn xuống, 0 tick = quay vòng vô ích. */
+        /* +1 tick: pdMS_TO_TICKS rounds down, and 0 ticks would spin uselessly. */
         uint32_t got = 0;
         xTaskNotifyWait(0, UINT32_MAX, &got, pdMS_TO_TICKS(wait_ms) + 1);
         pending = got;
@@ -619,7 +627,7 @@ static void ctl_task(void *arg)
 }
 
 /* ------------------------------------------------------------------ */
-/* Khởi tạo                                                           */
+/* Initialisation                                                    */
 /* ------------------------------------------------------------------ */
 
 esp_err_t water_init(void)
@@ -648,7 +656,7 @@ esp_err_t water_init(void)
     nht_valve_init(&V, &vc, now_ms());
     nht_valve_on_event(&V, on_valve_event, NULL);
 
-    /* --- cảm biến ngập --- */
+    /* --- leak sensor --- */
     memset(&LEAK, 0, sizeof(LEAK));
     LEAK.analog      = c->leak_analog;
     LEAK.inverted    = c->leak_inverted;
@@ -671,7 +679,7 @@ esp_err_t water_init(void)
         gpio_config(&io);
     }
 
-    /* --- điện áp nguồn --- */
+    /* --- supply voltage --- */
     nht_adc_cfg_t vac = {
         .gpio    = PIN_VOLTAGE_ADC,
         .samples = 5,
@@ -679,7 +687,7 @@ esp_err_t water_init(void)
     };
     volt_adc_ok = (nht_adc_init(&VOLT_ADC, &vac) == ESP_OK);
 
-    /* --- lưu lượng --- */
+    /* --- flow --- */
     nht_pulse_cfg_t pc = {
         .gpio            = PIN_FLOW_SENSOR,
         .pulses_per_unit = c->flow_pulses_per_l,
@@ -687,7 +695,7 @@ esp_err_t water_init(void)
     };
     if (nht_pulse_init(&FLOW, &pc) != ESP_OK) FLOW = NULL;
 
-    /* --- lịch: nạp NGAY, trước cả khi có WiFi --- */
+    /* --- schedule: load it NOW, before WiFi is even up --- */
     if (nht_store_init(&SCHED_ST, SCHED_PARTITION, SCHED_NAMESPACE) == ESP_OK)
         sched_restore();
     else
@@ -705,8 +713,8 @@ void water_apply_cfg(void)
     app_cfg_t *c = app_cfg();
 
     lock();
-    /* Cảm biến ngập: chỉ sửa tham số, KHÔNG gọi lại init - init sẽ xoá cả
-       trạng thái đang có, và đang báo ngập mà bị xoá thì van mở lại ngay. */
+    /* Leak sensor: only adjust the parameters, do NOT call init again - init would wipe
+       the current state, and wiping an active alarm would reopen the valve at once. */
     if (c->leak_thr_off < c->leak_thr_on) {
         LEAK.thr_on  = c->leak_thr_on;
         LEAK.thr_off = c->leak_thr_off;
@@ -768,9 +776,9 @@ void water_bench_set_volt_raw(uint16_t raw) { nht_adc_fake_set(PIN_VOLTAGE_ADC, 
 void water_bench_fail_leak_adc(bool fail)   { bench_leak_fail = fail; }
 void water_bench_stall_ctl(uint32_t ms)     { bench_stall_ms = ms; poke(EV_CMD); }
 
-/* Ghi lại MỌI lần relay đổi mức, kèm mốc thời gian của chip (độ phân giải
-   5 ms), ra serial. Bộ test dựng lại trình tự và thời gian từ đây - không dựa
-   vào WiFi/HTTP nên không méo khi sóng yếu. */
+/* Records EVERY change of relay level, with the chip's timestamp (5 ms resolution),
+   on the serial port. The test rig rebuilds sequences and timing from it - it does
+   not depend on WiFi/HTTP, so a weak signal cannot distort it. */
 static QueueHandle_t TRACE_Q;
 static uint32_t      trace_last = 0xFFFFFFFFu;
 

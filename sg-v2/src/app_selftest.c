@@ -1,13 +1,14 @@
 /**
- * app_selftest.c - Kiểm thử tích hợp CHẠY TRÊN TARGET. Chỉ build với -DSG_SIM.
+ * @file    app_selftest.c
+ * @brief   Integration tests that RUN ON THE TARGET. Built only with -DSG_SIM.
  *
- * Test trên máy (pio test -e native) đã phủ phần logic thuần. Phần này phủ
- * những thứ chỉ tồn tại trên chip: NVS thật, esp_timer thật, GPIO thật, và
- * việc các task FreeRTOS chen nhau thật.
+ * The PC tests (pio test -e native) already cover the pure logic. This file covers
+ * what only exists on the chip: real NVS, real esp_timer, real GPIO, and real
+ * FreeRTOS tasks interleaving.
  *
- * Chạy trong QEMU. QEMU không có sóng WiFi (esp_phy_enable sẽ assert), nên ở
- * chế độ này tầng mạng bị tắt hẳn - đúng ra lại thành một phép thử tốt: nó
- * chứng minh việc tưới chạy được khi KHÔNG có mạng nào cả.
+ * Runs in QEMU. QEMU has no radio (esp_phy_enable would assert), so the network
+ * layer is switched off entirely in this mode - which is itself a good test: it
+ * proves that watering works with NO network at all.
  */
 
 #if defined(SG_SIM)
@@ -23,7 +24,7 @@
 #include "nht_adc.h"
 #include "nht_sched.h"
 
-/* Cấu hình đã được đẩy vào cấu trúc đang chạy hay chưa. */
+/* Whether the settings have been pushed into the running structures yet. */
 #define LEAK_HOLD_APPLIED() (app_cfg()->leak_hold_off_ms == 3000)
 
 #include <string.h>
@@ -56,7 +57,7 @@ static water_status_t snap(void)
     return s;
 }
 
-/* Van bi mất `travel_ms` để quay hết hành trình. */
+/* A ball valve needs `travel_ms` to turn end to end. */
 static void wait_travel(void) { wait_ms(app_cfg()->travel_ms + 600); }
 
 static void t_boot_state(void)
@@ -98,7 +99,7 @@ static void t_duration_survives_duplicate(void)
     wait_travel();
     uint32_t a = snap().remaining_s;
 
-    /* Lệnh y hệt dội về, kiểu event đồng bộ từ cloud. */
+    /* The identical command echoing back, like a sync event from the cloud. */
     water_open(30, 100, WSRC_CLOUD);
     water_open(30, 100, WSRC_CLOUD);
     wait_ms(300);
@@ -107,9 +108,8 @@ static void t_duration_survives_duplicate(void)
     CHECK(b <= a && b + 3 >= a, "thời lượng giữ nguyên (%us -> %us)",
           (unsigned)a, (unsigned)b);
 
-    /* Qua mốc thời lượng mặc định 60s mà vẫn phải đang mở? Không - ở đây
-       thời lượng 30s NGẮN hơn mặc định, nên chỉ cần khẳng định nó tự đóng
-       đúng lúc chứ không kéo dài tới 60s. */
+    /* Past the 60 s default and still open? No - here the 30 s duration is SHORTER
+       than the default, so it only has to be shown to close on time and not stretch to 60 s. */
     wait_ms(31000);
     CHECK(strcmp(vstate(), "open") != 0, "tự đóng khi hết 30s (%s)", vstate());
     wait_travel();
@@ -119,7 +119,7 @@ static void t_max_run_ceiling(void)
 {
     ESP_LOGI(TAG, "[4] Trần thời gian tưới là chặn cứng");
 
-    water_open(99999, 100, WSRC_CLOUD);   /* xin ~27 tiếng */
+    water_open(99999, 100, WSRC_CLOUD);   /* ask for ~27 hours */
     wait_travel();
     uint32_t left = snap().remaining_s;
     CHECK(left <= app_cfg()->run_max_s,
@@ -138,10 +138,10 @@ static void t_leak_interlock(void)
     wait_travel();
     CHECK(!strcmp(vstate(), "open"), "đang tưới trước khi mô phỏng ngập");
 
-    /* Đẩy giá trị cảm biến lên trên ngưỡng vào ngập. */
+    /* Push the sensor value above the leak-entry threshold. */
     nht_adc_fake_set(PIN_LEAK_ADC, app_cfg()->leak_thr_on + 300);
 
-    /* Trễ vào trạng thái ngập là leak_hold_on_ms. */
+    /* The entry delay is leak_hold_on_ms. */
     wait_ms(app_cfg()->leak_hold_on_ms + 1500);
     CHECK(snap().leak, "đã công nhận có ngập");
 
@@ -151,8 +151,8 @@ static void t_leak_interlock(void)
     nht_valve_err_t e = water_open(60, 100, WSRC_LOCAL_API);
     CHECK(e == NHT_VALVE_ERR_INHIBIT, "lệnh mở bị từ chối khi đang ngập (mã %d)", e);
 
-    /* Cho khô lại. Trễ ra là leak_hold_off_ms - đặt tạm ngắn để test chạy
-       được; giá trị thật 10 phút chính là thứ diệt bệnh báo ảo. */
+    /* Let it dry again. The exit delay is leak_hold_off_ms - shortened here so the
+       test finishes; the real 10 minutes is what kills false alarms. */
     ESP_LOGI(TAG, "  (rút ngắn trễ thoát ngập để test chạy kịp)");
     app_cfg()->leak_hold_off_ms = 3000;
     water_apply_cfg();
@@ -175,7 +175,7 @@ static void t_voltage_failsafe(void)
     wait_travel();
     CHECK(!strcmp(vstate(), "open"), "đang tưới");
 
-    /* Một cú sụt thoáng qua (< 3 mẫu liên tiếp): KHÔNG được đóng van. */
+    /* A passing dip (< 3 consecutive samples): must NOT close the valve. */
     nht_adc_fake_set(PIN_VOLTAGE_ADC, 300);
     wait_ms(1500);
     nht_adc_fake_set(PIN_VOLTAGE_ADC, 1500);
@@ -183,7 +183,7 @@ static void t_voltage_failsafe(void)
     CHECK(!snap().voltage_low, "cú sụt thoáng qua không bị coi là sự cố");
     CHECK(!strcmp(vstate(), "open"), "van vẫn mở sau nhiễu thoáng qua");
 
-    /* Sụt kéo dài: phải đóng. */
+    /* A sustained dip: must close. */
     nht_adc_fake_set(PIN_VOLTAGE_ADC, 300);
     wait_ms(4500);
     CHECK(snap().faults & WF_VOLTAGE, "nguồn thấp kéo dài -> sự cố");
@@ -193,7 +193,7 @@ static void t_voltage_failsafe(void)
     nht_valve_err_t e = water_open(10, 100, WSRC_LOCAL_API);
     CHECK(e == NHT_VALVE_ERR_INHIBIT, "không mở được khi nguồn yếu (mã %d)", e);
 
-    /* Nguồn hồi lại và ổn định thì gỡ khoá. */
+    /* The supply recovers and stays stable: the lock is released. */
     nht_adc_fake_set(PIN_VOLTAGE_ADC, 1500);
     wait_ms(7000);
     CHECK(!(snap().faults & WF_VOLTAGE), "nguồn ổn định lại -> gỡ sự cố");
@@ -215,8 +215,8 @@ static void t_leak_flapping(void)
     water_status_t before = snap();
     CHECK(!before.leak, "bắt đầu ở trạng thái khô");
 
-    /* Cảm biến ẩm: giá trị nhảy trong vùng chết giữa hai ngưỡng suốt 12 giây.
-       Không mẫu nào vượt thr_on, nên không được có báo ngập nào. */
+    /* A damp sensor: the value jumps around the dead band between the two thresholds
+       for 12 seconds. No sample exceeds thr_on, so there must be no leak alarm. */
     uint16_t lo = app_cfg()->leak_thr_off + 50;
     uint16_t hi = app_cfg()->leak_thr_on - 50;
     for (int i = 0; i < 24; i++) {
@@ -258,8 +258,8 @@ static void t_schedule_fires(void)
 {
     ESP_LOGI(TAG, "[8] Lịch tự kích khi tới giờ");
 
-    /* Đặt đồng hồ hệ thống tới 05:59:55 giờ địa phương của một ngày cụ thể,
-       rồi hẹn lịch lúc 06:00 - chỉ phải chờ 5 giây. */
+    /* Set the system clock to 05:59:55 local time on a specific day, then
+       schedule 06:00 - only a 5-second wait. */
     int32_t tz = app_cfg()->tz_offset_s;
     time_t target = (time_t)20691 * 86400 + 6 * 3600 - 5 - tz;
     struct timeval tv = { .tv_sec = target, .tv_usec = 0 };
@@ -288,8 +288,8 @@ static void t_catchup(void)
 {
     ESP_LOGI(TAG, "[9] Cửa sổ bù giờ: tick trễ vẫn tưới (lỗi của bản cũ)");
 
-    /* Nhảy thẳng tới 06:03 - đã QUA giờ hẹn 3 phút. Cách khớp đúng-phút
-       của bản cũ sẽ bỏ luôn lịch hôm nay. */
+    /* Jump straight to 06:03 - the scheduled time is already 3 minutes PAST. The old
+       exact-minute matching would have dropped today's run altogether. */
     int32_t tz = app_cfg()->tz_offset_s;
     time_t target = (time_t)20692 * 86400 + 6 * 3600 + 180 - tz;
     struct timeval tv = { .tv_sec = target, .tv_usec = 0 };

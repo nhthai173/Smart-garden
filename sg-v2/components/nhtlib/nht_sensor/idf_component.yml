@@ -1,0 +1,9 @@
+version: "1.0.0"
+description: >
+  Basic sensor inputs for ESP-IDF: one-shot ADC with calibration and
+  median filter (nht_adc), and pulse counting with a 64-bit non-wrapping
+  counter, using PCNT or a GPIO interrupt depending on the chip
+  (nht_pulse, for flow and energy meters).
+url: https://github.com/nhthai173/Smart-garden
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

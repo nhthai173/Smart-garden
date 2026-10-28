@@ -5,15 +5,21 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 
-# --- Watchdog: đây là câu trả lời cho "thỉnh thoảng treo phải cắt nguồn" ---
+# --- Watchdog: the answer to "it hangs now and then and needs a power cycle" ---
 CONFIG_ESP_TASK_WDT_INIT=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
 CONFIG_ESP_TASK_WDT_PANIC=y
-CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=y
+# The idle task is NOT watched: under a sustained request flood the higher-priority
+# network tasks can legitimately starve it for 10 s, and resetting the device for
+# that turns a busy LAN into a denial of service. Liveness of the control loop is
+# watched instead - ctl_task subscribes to the task watchdog itself and feeds it
+# only when it really ran. A stuck control loop still resets the chip, and a reset
+# always leaves the valve closed.
+# CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0 is not set
 CONFIG_ESP_INT_WDT=y
 CONFIG_ESP_INT_WDT_TIMEOUT_MS=300
 
-# --- Coredump: để lần treo tiếp theo có backtrace thật thay vì đoán ---
+# --- Coredump: so the next hang leaves a real backtrace instead of guesswork ---
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
@@ -29,15 +35,15 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
 CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=4096
 
-# --- lwIP: khuyến nghị từ repo tham khảo, giúp stream SSE bám kết nối tốt hơn ---
+# --- lwIP: recommended by the reference repo, helps the SSE stream hold its connection ---
 CONFIG_LWIP_TCP_MSL=10000
-CONFIG_LWIP_MAX_SOCKETS=10
+CONFIG_LWIP_MAX_SOCKETS=16
 CONFIG_LWIP_SO_LINGER=y
 
-# --- Không dùng Bluetooth: tiết kiệm flash lẫn RAM ---
+# --- No Bluetooth: saves both flash and RAM ---
 CONFIG_BT_ENABLED=n
 
-# --- Tối ưu dung lượng ---
+# --- Size optimisation ---
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
@@ -45,3 +51,9 @@ CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
 # --- OTA ---
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK=n
+
+# --- WiFi buffers: bound the worst-case heap a request flood can pin down ---
+# The defaults (32 dynamic RX + 32 dynamic TX buffers of ~1.6 KB each) let a
+# flood take ~100 KB of the heap, starving TLS and the rest of the firmware.
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=16

@@ -1,7 +1,7 @@
 /**
- * Hồi quy cho nht_sse.
- * Điểm chính: dữ liệu từ socket đến theo khối tuỳ ý. Test nạp cùng một luồng
- * byte theo nhiều cách cắt khác nhau và đòi kết quả phải giống hệt nhau.
+ * Regression tests for nht_sse.
+ * Key point: data from a socket arrives in arbitrary chunks. The test feeds the same
+ * byte stream cut in many different ways and demands identical results.
  */
 #include <unity.h>
 #include <string.h>
@@ -35,7 +35,7 @@ void tearDown(void) { }
 
 static void feed_str(const char *s) { nht_sse_feed(&S, s, strlen(s)); }
 
-/** Nạp từng khối `sz` byte một - mô phỏng socket trả về từng mẩu nhỏ. */
+/** Feed `sz` bytes at a time - simulates a socket returning small pieces. */
 static void feed_chunked(const char *s, size_t sz)
 {
     size_t n = strlen(s);
@@ -43,7 +43,7 @@ static void feed_chunked(const char *s, size_t sz)
         nht_sse_feed(&S, s + i, (i + sz > n) ? (n - i) : sz);
 }
 
-/* --- cơ bản --- */
+/* --- basics --- */
 
 static void test_single_event(void)
 {
@@ -77,7 +77,7 @@ static void test_no_space_after_colon(void)
     TEST_ASSERT_EQUAL_STRING("{\"x\":1}", last_data);
 }
 
-/* --- cắt khối tuỳ ý: kết quả phải bất biến --- */
+/* --- arbitrary chunking: the result must be invariant --- */
 
 static void test_chunk_size_does_not_matter(void)
 {
@@ -101,13 +101,13 @@ static void test_split_mid_line(void)
     feed_str("t\ndat");
     feed_str("a: {\"x\":");
     feed_str("1}\n");
-    TEST_ASSERT_EQUAL_INT(0, calls);      /* chưa gặp dòng trống */
+    TEST_ASSERT_EQUAL_INT(0, calls);      /* no blank line yet */
     feed_str("\n");
     TEST_ASSERT_EQUAL_INT(1, calls);
     TEST_ASSERT_EQUAL_STRING("{\"x\":1}", last_data);
 }
 
-/* --- những gì Firebase thực sự gửi --- */
+/* --- what Firebase really sends --- */
 
 static void test_keep_alive(void)
 {
@@ -135,11 +135,11 @@ static void test_keepalive_between_puts(void)
     TEST_ASSERT_EQUAL_STRING("{\"path\":\"/valve\",\"data\":1}", last_data);
 }
 
-/* --- trường hợp hỏng --- */
+/* --- broken cases --- */
 
 static void test_oversized_event_is_dropped_not_truncated(void)
 {
-    /* JSON cụt vẫn parse ra được cấu trúc trông hợp lệ -> phải bỏ cả sự kiện. */
+    /* Truncated JSON can still parse into a valid-looking structure -> the whole event must be dropped. */
     char big[BUF * 2];
     int n = snprintf(big, sizeof(big), "event: put\ndata: {\"x\":\"");
     memset(big + n, 'A', BUF + 50);
@@ -149,7 +149,7 @@ static void test_oversized_event_is_dropped_not_truncated(void)
     TEST_ASSERT_EQUAL_INT(0, calls);
     TEST_ASSERT_EQUAL_UINT32(1, S.dropped);
 
-    /* Và sự kiện tiếp theo vẫn phải nhận được bình thường. */
+    /* And the next event must still be received normally. */
     feed_str("event: put\ndata: {\"ok\":1}\n\n");
     TEST_ASSERT_EQUAL_INT(1, calls);
     TEST_ASSERT_EQUAL_STRING("{\"ok\":1}", last_data);

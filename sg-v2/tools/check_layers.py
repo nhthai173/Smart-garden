@@ -1,18 +1,18 @@
-"""Ép hierarchy của dự án lúc build. Chạy tay: python3 tools/check_layers.py
+"""Enforce the project hierarchy at build time. Run by hand: python3 tools/check_layers.py
 
-Ba tầng, phụ thuộc chỉ đi từ trên xuống:
+Three layers, dependencies only go downwards:
 
-    main (src/)                 ráp mọi thứ, không chứa logic
-      sg_net                    adapter mạng của sản phẩm (web, Firebase)
-        sg_core                 lõi tưới + an toàn, KHÔNG biết mạng
-          nht_*                 thư viện dùng lại, KHÔNG biết sản phẩm
+    main (src/)                 wires everything together, holds no logic
+      sg_net                    the product's network adapters (web, Firebase)
+        sg_core                 watering + safety core, knows NOTHING about the network
+          nhtlib (nht_*)        reusable libraries, know NOTHING about the product
 
-Quy tắc cứng:
-  1. Mỗi component chỉ được REQUIRES những gì bảng ALLOWED cho phép.
-  2. Mọi #include chéo component phải được khai báo trong REQUIRES.
-  3. nht_* không bao giờ chạm sg_* hay main.
-  4. sg_core không bao giờ chạm nht_net / nht_webkit / nht_fbrtdb / sg_net.
-  5. Component mới chưa có trong bảng là lỗi - phải xếp tầng cho nó.
+Hard rules:
+  1. A component may only REQUIRE what the ALLOWED table permits.
+  2. Every cross-component #include must be declared in REQUIRES.
+  3. nht_* never touches sg_* or main.
+  4. sg_core never touches nht_net / nht_webkit / nht_fbrtdb / sg_net.
+  5. A new component missing from the table is an error - it must be given a layer.
 """
 import os
 import re
@@ -24,9 +24,9 @@ try:
 except Exception:
     PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Chỉ tính phụ thuộc giữa các component của dự án (nht_*, sg_*, main).
+# Only dependencies between the project's own components count (nht_*, sg_*, main).
 ALLOWED = {
-    # --- thư viện tái sử dụng: độc lập, trừ nht_valve đứng trên nht_actuator
+    # --- reusable libraries: independent, except nht_valve sits on nht_actuator
     "nht_actuator": set(),
     "nht_dinput":   set(),
     "nht_sched":    set(),
@@ -36,7 +36,7 @@ ALLOWED = {
     "nht_webkit":   set(),
     "nht_fbrtdb":   set(),
     "nht_valve":    {"nht_actuator"},
-    # --- sản phẩm
+    # --- the product
     "sg_core": {"nht_store", "nht_actuator", "nht_valve", "nht_sched",
                 "nht_dinput", "nht_sensor"},
     "sg_net":  {"sg_core", "nht_net", "nht_webkit", "nht_fbrtdb"},
@@ -47,10 +47,15 @@ NETWORK = {"nht_net", "nht_webkit", "nht_fbrtdb", "sg_net"}
 
 def components():
     out = {}
-    cdir = os.path.join(PROJ, "components")
-    for n in sorted(os.listdir(cdir)):
-        if os.path.isdir(os.path.join(cdir, n)):
-            out[n] = os.path.join(cdir, n)
+    # Product components and the reusable nhtlib components live in two roots.
+    for root in (os.path.join(PROJ, "components"),
+                 os.path.join(PROJ, "components", "nhtlib")):
+        for n in sorted(os.listdir(root)):
+            p = os.path.join(root, n)
+            # A component is a directory with its own CMakeLists.txt; this also
+            # skips "nhtlib" itself (a bundle) and its "examples" folder.
+            if os.path.isfile(os.path.join(p, "CMakeLists.txt")):
+                out[n] = p
     out["main"] = os.path.join(PROJ, "src")
     return out
 
@@ -92,7 +97,7 @@ def check():
 
     for name in comps:
         if name not in ALLOWED:
-            errs.append(f"{name}: chưa được xếp tầng trong tools/check_layers.py")
+            errs.append(f"{name}: has not been given a layer in tools/check_layers.py")
 
     for name, path in comps.items():
         if name not in ALLOWED:
@@ -101,27 +106,27 @@ def check():
         used = {owner[h] for h in includes(path) if h in owner} - {name}
 
         for r in sorted(req - ALLOWED[name]):
-            errs.append(f"{name}: REQUIRES '{r}' vi phạm tầng "
-                        f"(chỉ được: {sorted(ALLOWED[name]) or 'không gì cả'})")
+            errs.append(f"{name}: REQUIRES '{r}' violates the layering "
+                        f"(allowed: {sorted(ALLOWED[name]) or 'nothing'})")
         for u in sorted(used - req):
-            errs.append(f"{name}: #include header của '{u}' nhưng không "
-                        f"khai báo REQUIRES")
+            errs.append(f"{name}: includes a header of '{u}' but does not "
+                        f"declare it in REQUIRES")
         for u in sorted(used - ALLOWED[name]):
-            errs.append(f"{name}: dùng '{u}' vi phạm tầng")
+            errs.append(f"{name}: uses '{u}', violating the layering")
         if name == "sg_core" and (req | used) & NETWORK:
-            errs.append("sg_core đụng tới tầng mạng: "
+            errs.append("sg_core touches the network layer: "
                         f"{sorted((req | used) & NETWORK)}")
         if name.startswith("nht_") and (req | used) & {"sg_core", "sg_net", "main"}:
-            errs.append(f"{name}: thư viện tái sử dụng không được biết sản phẩm")
+            errs.append(f"{name}: a reusable library must not know the product")
 
-    # Chu trình (bảng đã là DAG nhưng chặn người sửa bảng).
+    # Cycles (the table is already a DAG, but this guards whoever edits it).
     state = {}
 
     def visit(n, stack):
         if state.get(n) == 2:
             return
         if state.get(n) == 1:
-            errs.append("chu trình phụ thuộc: " + " -> ".join(stack + [n]))
+            errs.append("dependency cycle: " + " -> ".join(stack + [n]))
             return
         state[n] = 1
         for d in ALLOWED.get(n, ()):
@@ -136,9 +141,9 @@ def check():
 def main():
     errs = check()
     if errs:
-        print("\n".join("[layers] LỖI " + e for e in errs), file=sys.stderr)
+        print("\n".join("[layers] ERROR " + e for e in errs), file=sys.stderr)
         sys.exit(1)
-    print("[layers] OK - hierarchy hợp lệ (%d component)" % len(components()))
+    print("[layers] OK - hierarchy valid (%d components)" % len(components()))
 
 
 main()

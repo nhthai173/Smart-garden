@@ -1,0 +1,11 @@
+version: "1.1.0"
+description: >
+  Water-valve control for ESP-IDF: motorised ball valve (direction, travel
+  time, partial opening) and normally-closed solenoid behind one API. Hard
+  run-time ceiling, safety inhibit, always closes at start-up, and never
+  reverses the motor under power.
+url: https://github.com/nhthai173/Smart-garden
+license: MIT
+# Needs nht_actuator (declared with REQUIRES in CMakeLists.txt, not through
+# the registry - the two components ship together in nhtlib).
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

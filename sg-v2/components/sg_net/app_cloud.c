@@ -1,24 +1,25 @@
 /**
- * app_cloud.c - Adapter Firebase. Ánh xạ desired/reported.
+ * @file    app_cloud.c
+ * @brief   Firebase adapter. Maps /desired and /reported onto the watering core.
  *
  * ---------------------------------------------------------------------------
- * VÌ SAO TÁCH desired / reported
+ * WHY desired AND reported ARE SEPARATE
  *
- * Hệ cũ dùng chung một nhánh `/data` cho cả lệnh lẫn trạng thái. Thiết bị
- * vừa ghi trạng thái vào đó, vừa nghe realtime chính nhánh đó - nên mỗi lần
- * tự báo cáo là tự nhận lại lệnh của chính mình. Vòng lặp tự dội ấy làm thời
- * lượng tưới bị đặt lại và van đóng sớm.
+ * The old system used one `/data` branch for both commands and state. The device
+ * wrote its state there and also listened to that same branch in real time - so
+ * every self-report came back as a command from itself. That self-echo loop
+ * reset the watering duration and closed the valve early.
  *
- * Ở đây hai chiều không giao nhau:
+ * Here the two directions never meet:
  *
- *     /desired    ứng dụng GHI, thiết bị chỉ ĐỌC   (nghe stream ở đây)
- *     /reported   thiết bị GHI, ứng dụng chỉ ĐỌC   (không bao giờ đọc lại)
+ *     /desired    the app WRITES, the device only READS   (it streams this)
+ *     /reported   the device WRITES, the app only READS   (never read back)
  *
- * Thiết bị không thể nghe thấy cái nó vừa ghi - không phải nhờ một cái chốt
- * chặn nào, mà vì hai đường không hề gặp nhau. Cùng mô hình với Device Shadow
- * của AWS IoT, nên sau này chuyển sang cũng không phải nghĩ lại kiến trúc.
+ * The device cannot hear what it just wrote - not thanks to a guard, but because
+ * the two paths never cross. It is the same model as the AWS IoT Device Shadow,
+ * so moving there later needs no rethink of the architecture.
  *
- * Luật bảo mật nên khoá luôn ở phía máy chủ:
+ * The security rules should lock this down on the server side as well:
  *     "reported": { ".write": "auth.uid === $uid" }
  *     "desired":  { ".write": "auth.uid === $uid" }
  * ---------------------------------------------------------------------------
@@ -47,7 +48,7 @@
 
 static const char *TAG = "cloud";
 
-#define REPORT_MIN_INTERVAL_MS 1000
+#define REPORT_MIN_INTERVAL_MS 2000
 #define BASE_MAX_LEN            128
 #define PATH_MAX_LEN            224
 #define JSON_BUF               2048
@@ -63,9 +64,9 @@ bool app_cloud_online(void)
     return nht_fb_state() == NHT_FB_READY && nht_fb_stream_connected();
 }
 
-/* Ghép BASE + suffix. Dùng bộ đệm riêng đủ rộng cho cả hai phần để trình
-   biên dịch không phải đoán, và để tránh cắt cụt đường dẫn - một đường dẫn
-   bị cắt sẽ ghi đè nhầm nhánh dữ liệu. */
+/* Join BASE + suffix. A dedicated buffer wide enough for both parts spares the
+   compiler any guessing and avoids truncating the path - a truncated path would
+   overwrite the wrong data branch. */
 static void path_of(char *out, size_t len, const char *suffix)
 {
     int n = snprintf(out, len, "%s%s", BASE, suffix);
@@ -74,7 +75,7 @@ static void path_of(char *out, size_t len, const char *suffix)
 }
 
 /* ------------------------------------------------------------------ */
-/* Báo cáo trạng thái  (chỉ ghi, không bao giờ đọc lại)               */
+/* Status report  (write-only, never read back)                     */
 /* ------------------------------------------------------------------ */
 
 static void publish_reported(void)
@@ -87,8 +88,8 @@ static void publish_reported(void)
     char ip[16] = "";
     nht_net_ip(ip, sizeof(ip));
 
-    /* Bộ đệm lớn nằm trên heap, không phải stack: hàm này chạy trong task có
-       stack 4-6 KB, và snprintf với %f đã tốn hơn 1 KB stack rồi. */
+    /* The large buffer lives on the heap, not the stack: this function runs in a
+       task with a 4-6 KB stack, and snprintf with %f already uses over 1 KB of it. */
     char fbuf[40];
     char *json = malloc(JSON_BUF);
     if (!json) return;
@@ -122,9 +123,9 @@ static void publish_reported(void)
 
 static TaskHandle_t BEAT;
 
-/** Người nghe của app_water. Chạy NGAY TRONG task điều khiển (giữ khoá tưới),
- *  nên chỉ được phép làm việc rẻ: đánh dấu rồi đánh thức task báo cáo. Dựng
- *  JSON và đẩy lên mạng ở đây là kéo task điều khiển vào chuyện mạng. */
+/** Listener for app_water. Runs RIGHT INSIDE the control task (holding the watering
+ *  lock), so it may only do cheap work: set a flag and wake the report task. Building
+ *  JSON and pushing it to the network here would drag the control task into network work. */
 static void on_water_change(const water_status_t *st, void *user)
 {
     (void)st; (void)user;
@@ -143,8 +144,8 @@ static void publish_info(void)
     path_of(p, sizeof(p), "/info");
     nht_fb_patch(p, json);
 
-    /* Lịch tưới hiện có: để ứng dụng thấy được thiết bị đang chạy lịch gì,
-       kể cả lịch được thêm từ giao diện web cục bộ. */
+    /* The current schedule list, so the app can see what the device runs, including
+       schedules added from the local web UI. */
     water_sched_json(sch, JSON_BUF);
     path_of(p, sizeof(p), "/reported/schedules_list");
     nht_fb_put(p, sch);
@@ -153,7 +154,7 @@ static void publish_info(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Nhận lệnh từ /desired                                              */
+/* Receiving commands from /desired                                   */
 /* ------------------------------------------------------------------ */
 
 static void apply_valve_cmd(cJSON *v)
@@ -164,9 +165,9 @@ static void apply_valve_cmd(cJSON *v)
     cJSON *jid  = cJSON_GetObjectItem(v, "id");
     if (!cJSON_IsString(jcmd)) return;
 
-    /* Chống thực hiện lại lệnh cũ. Khi stream mở lại, Firebase gửi nguyên
-       trạng thái hiện tại của /desired - không có bước lọc này thì mỗi lần
-       mạng chập chờn là van lại mở thêm một lượt nữa. */
+    /* Do not rerun old commands. When the stream re-opens Firebase sends the whole
+       current /desired - without this filter every network blip would open the
+       valve for another run. */
     if (cJSON_IsNumber(jid)) {
         if (jid->valuedouble == last_cmd_id) return;
         last_cmd_id = jid->valuedouble;
@@ -175,16 +176,16 @@ static void apply_valve_cmd(cJSON *v)
     if (!strcmp(jcmd->valuestring, "open")) {
         cJSON *jd = cJSON_GetObjectItem(v, "duration_s");
         cJSON *jl = cJSON_GetObjectItem(v, "level");
-        /* Dữ liệu từ cloud là đầu vào không tin cậy: ép kiểu thẳng một số âm
-           sang uint32 ra ~4 tỷ giây và van mở hết trần thay vì thời lượng mặc
-           định. Số không hợp lệ (<=0, NaN) thì dùng mặc định; số quá lớn để
-           water_open kẹp xuống trần. */
+        /* Data from the cloud is untrusted input: casting a negative number straight
+           to uint32 gives ~4 billion seconds and the valve opens to the ceiling instead
+           of the default duration. An invalid number (<=0, NaN) takes the default; a
+           huge one is left for water_open to clamp to the ceiling. */
         double dd = cJSON_IsNumber(jd) ? jd->valuedouble : 0;
         uint32_t s = (dd >= 1.0) ? (dd > 86400.0 ? 86400u : (uint32_t)dd) : 0u;
         double ld = cJSON_IsNumber(jl) ? jl->valuedouble : 0;
         uint8_t  l = (ld >= 1.0) ? (ld > 100.0 ? 100u : (uint8_t)ld) : 0u;
 
-        /* Không có id thì chỉ thi hành khi nó thực sự đổi trạng thái. */
+        /* Without an id, act only when it really changes the state. */
         if (!cJSON_IsNumber(jid)) {
             water_status_t st;
             water_get_status(&st);
@@ -210,13 +211,13 @@ static void apply_cmd(cJSON *c)
 }
 
 /**
- * @param snapshot  true = bản chụp trạng thái nhận được ngay khi stream (mở
- *                  lại): chỉ ĐỒNG BỘ, không THI HÀNH lệnh nào.
+ * @param snapshot  true = a snapshot received right when the stream (re-)opened:
+ *                  only SYNCHRONISE, never EXECUTE any command.
  *
- * Bản chụp mang theo cả lệnh cũ còn nằm trong /desired. Lệnh mở van viết lúc
- * thiết bị mất mạng ba tiếng trước mà thi hành khi có lại mạng thì tưới một
- * lượt không ai mong đợi; lệnh "restart" còn nằm đó thì khởi động lại vô tận.
- * Chỉ thay đổi đến SAU khi stream đã mở mới là lệnh thật.
+ * A snapshot carries the old commands still sitting in /desired. An open command
+ * written three hours ago while the device was offline, executed on reconnect,
+ * would water when nobody expects it; a "restart" left there would reboot forever.
+ * Only changes that arrive AFTER the stream is open are real commands.
  */
 static void apply_desired(cJSON *d, bool snapshot)
 {
@@ -230,7 +231,7 @@ static void apply_desired(cJSON *d, bool snapshot)
 
     cJSON *v = cJSON_GetObjectItem(d, "valve");
     if (snapshot) {
-        /* Ghi nhận id của lệnh đang có để sau này không chạy lại nó. */
+        /* Remember the id of the command that is there so it is never rerun later. */
         cJSON *jid = v ? cJSON_GetObjectItem(v, "id") : NULL;
         if (cJSON_IsNumber(jid)) last_cmd_id = jid->valuedouble;
         ESP_LOGI(TAG, "bản chụp /desired: đồng bộ lịch, bỏ qua lệnh van/cmd cũ (an toàn)");
@@ -249,7 +250,7 @@ static void on_stream(const char *event, const char *path, const char *data,
     (void)user;
 
     if (!strcmp(event, "connected")) {
-        snapshot_pending = true;      /* put "/" kế tiếp là bản chụp */
+        snapshot_pending = true;      /* the next put "/" is a snapshot */
         return;
     }
     if (!strcmp(event, "auth_revoked")) {
@@ -272,7 +273,7 @@ static void on_stream(const char *event, const char *path, const char *data,
             publish_reported();
         }
     } else if (!strcmp(path, "/valve")) {
-        snapshot_pending = false;     /* đã có sự kiện cụ thể: hết bản chụp */
+        snapshot_pending = false;     /* a specific event arrived: the snapshot is over */
         apply_valve_cmd(j);
     } else if (!strcmp(path, "/schedules")) {
         char *s = cJSON_PrintUnformatted(j);
@@ -286,8 +287,8 @@ static void on_stream(const char *event, const char *path, const char *data,
 
 /* ------------------------------------------------------------------ */
 
-/** Task báo cáo: gom các thay đổi (tối đa 1 bản tin / REPORT_MIN_INTERVAL_MS)
- *  và gửi nhịp định kỳ. Là nơi DUY NHẤT dựng và đẩy /reported. */
+/** Report task: batches changes (at most 1 message per REPORT_MIN_INTERVAL_MS)
+ *  and sends a periodic heartbeat. The ONLY place that builds and pushes /reported. */
 static void heartbeat_task(void *arg)
 {
     (void)arg;
@@ -326,7 +327,7 @@ static void start_task(void *arg)
     (void)arg;
     app_cfg_t *c = app_cfg();
 
-    /* Đợi có mạng đã. Không chặn ai: đây là task riêng, van vẫn chạy. */
+    /* Wait for the network first. Nobody is blocked: this is its own task, the valve keeps running. */
     while (nht_net_state() != NHT_NET_CONNECTED)
         vTaskDelay(pdMS_TO_TICKS(1000));
 
@@ -346,7 +347,7 @@ static void start_task(void *arg)
         return;
     }
 
-    /* Chờ đăng nhập xong để biết uid, mới dựng được đường dẫn. */
+    /* Wait for the sign-in to know the uid before the path can be built. */
     for (int i = 0; i < 120 && BASE[0] == '\0'; i++)
         vTaskDelay(pdMS_TO_TICKS(1000));
 

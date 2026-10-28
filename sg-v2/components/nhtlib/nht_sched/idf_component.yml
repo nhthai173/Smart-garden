@@ -1,0 +1,8 @@
+version: "1.0.0"
+description: >
+  Time-of-day scheduler for ESP-IDF with a catch-up window and an
+  application-defined payload. Pure logic; compiles and unit-tests on a
+  PC.
+url: https://github.com/nhthai173/Smart-garden
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

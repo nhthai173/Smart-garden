@@ -1,3 +1,10 @@
+/**
+ * @file    app_cfg.c
+ * @brief   Device settings stored in NVS, with development defaults.
+ *
+ * See app_cfg.h for the list of settings and the rules they follow.
+ */
+
 #include "app_cfg.h"
 #include "nht_store.h"
 #include "esp_log.h"
@@ -9,19 +16,19 @@
 static const char *TAG = "cfg";
 
 /*
- * Giá trị mặc định lúc phát triển. Dò bằng __has_include nên repo sạch vẫn
- * biên dịch được: không có secret.h thì thiết bị khởi động với cấu hình
- * trống và chờ người dùng nhập qua captive portal.
+ * Development defaults. Detected with __has_include so a clean checkout still
+ * builds: without secret.h the device starts with blank settings and waits for
+ * the user to enter them through the captive portal.
  *
- * NVS LUÔN THẮNG - đây chỉ là giá trị ban đầu khi chưa có gì trong NVS.
+ * NVS ALWAYS WINS - these are only the initial values when NVS holds nothing.
  */
 #if __has_include("secret.h")
 #include "secret.h"
 #define HAVE_SECRET 1
 #endif
 
-/* Partition riêng: format lại cấu hình không đụng vào calibration của WiFi
-   nằm trong partition "nvs" mặc định. */
+/* Dedicated partition: re-formatting the settings never touches the WiFi
+   calibration kept in the default "nvs" partition. */
 #define CFG_PARTITION "nvs_cfg"
 #define CFG_NAMESPACE "sg"
 
@@ -35,21 +42,21 @@ static void set_defaults(void)
 {
     memset(&C, 0, sizeof(C));
 
-    C.valve_type      = 1;          /* van bi - giống hệ đang chạy */
+    C.valve_type      = 1;          /* ball valve - same as the system in service */
     C.travel_ms       = 8000;
     C.pump_delay_ms   = 8000;
     C.ac_auto_off_ms  = 180000;
     C.run_default_s   = 60;
-    C.run_max_s       = 1800;       /* 30 phút */
+    C.run_max_s       = 1800;       /* 30 minutes */
 
     C.leak_analog     = true;
     C.leak_inverted   = false;
     C.leak_thr_on     = 2400;
     C.leak_thr_off    = 1200;
-    C.leak_hold_on_ms  = 5000;      /* vào nhanh: an toàn ưu tiên   */
-    C.leak_hold_off_ms = 600000;    /* ra chậm: còn ẩm = còn ngập   */
+    C.leak_hold_on_ms  = 5000;      /* enter fast: safety first            */
+    C.leak_hold_off_ms = 600000;    /* leave slowly: still damp = still flooded */
 
-    C.flow_pulses_per_l = 450.0f;   /* YF-S201 điển hình */
+    C.flow_pulses_per_l = 450.0f;   /* typical YF-S201 */
     C.volt_scale        = 11.0f;
     C.volt_min          = 10.5f;
 
@@ -66,11 +73,11 @@ static void set_defaults(void)
     snprintf(C.fb_email,   sizeof(C.fb_email),   "%s", SECRET_FB_EMAIL);
     snprintf(C.fb_pass,    sizeof(C.fb_pass),    "%s", SECRET_FB_PASS);
     snprintf(C.fb_device_id, sizeof(C.fb_device_id), "%s", SECRET_FB_DEVICE_ID);
-    return;   /* device_id lấy từ secret, không suy ra từ MAC */
+    return;   /* device_id comes from the secrets, not derived from the MAC */
 #endif
 
-    /* device_id mặc định lấy từ MAC để mỗi board tự có một nhánh riêng
-       trên Firebase mà không cần cấu hình tay. */
+    /* The default device_id comes from the MAC so every board has its own
+       branch on Firebase without manual configuration. */
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(C.fb_device_id, sizeof(C.fb_device_id), "sg-%02x%02x%02x",
@@ -127,8 +134,8 @@ esp_err_t app_cfg_load(void)
     LD_S(fb_pass, "fb_pass");
     LD_S(fb_device_id, "fb_dev");
 
-    /* Chặn cấu hình vô lý ngay khi nạp: trần thời gian tưới bằng 0 nghĩa là
-       van mở vĩnh viễn - đúng loại lỗi làm ngập vườn. */
+    /* Reject absurd settings as they load: a zero run-time ceiling would mean
+       a valve that never closes - exactly the kind of bug that floods a garden. */
     if (C.run_max_s == 0 || C.run_max_s > 7200) C.run_max_s = 1800;
     if (C.run_default_s == 0 || C.run_default_s > C.run_max_s)
         C.run_default_s = C.run_max_s < 60 ? C.run_max_s : 60;

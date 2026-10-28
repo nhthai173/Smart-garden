@@ -1,10 +1,10 @@
 [wokwi]
 version = 1
-# Ảnh flash gộp, đệm đầy 4MB, sinh tự động sau mỗi lần build.
+# Merged flash image, padded to the full 4 MB, regenerated after every build.
 firmware = ".pio/build/esp32c3_wokwi/merged.bin"
 elf      = ".pio/build/esp32c3_wokwi/firmware.elf"
 
-# Mở cổng 80 của thiết bị ra localhost:8180 để thử giao diện web.
+# Expose the device's port 80 as localhost:8180 to try the web UI.
 [[net.forward]]
 from = "localhost:8180"
 to   = "target:80"

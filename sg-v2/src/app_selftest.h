@@ -1,5 +1,5 @@
 #ifndef APP_SELFTEST_H
 #define APP_SELFTEST_H
-/** Chỉ có khi build với -DSG_SIM. Chạy kiểm thử tích hợp trên chip. */
+/** Only with -DSG_SIM. Runs the integration tests on the chip. */
 void app_selftest_start(void);
 #endif

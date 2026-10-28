@@ -1,10 +1,11 @@
 /**
- * app_bench.c - Điểm tiêm lỗi cho kiểm thử trên board thật. Chỉ build với
- * -DSG_BENCH (env esp32c3_bench); firmware phát hành không có file này.
+ * @file    app_bench.c
+ * @brief   Fault-injection points for testing on a real board. Built only with
+ * -DSG_BENCH (env esp32c3_bench); the release firmware does not contain this file.
  *
- * Board bench chưa đấu cảm biến/relay nên mọi I/O là giả. Các route dưới đây
- * cho bộ test Python đặt giá trị cảm biến, đọc mức THẬT trên chân relay, và
- * gây sự cố (treo task, crash, rớt WiFi) để xem van có đóng như thiết kế.
+ * The bench board has no sensors or relays wired, so all I/O is simulated. The
+ * routes below let the Python test rig set sensor values, read the REAL level on
+ * the relay pins, and inject faults (hung task, crash, WiFi drop) to see whether the valve closes as designed.
  */
 #include "sdkconfig.h"
 
@@ -79,7 +80,7 @@ static esp_err_t h_crash(httpd_req_t *r)
     return ESP_OK;
 }
 
-/* --- rớt WiFi giả: đổi sang một SSID không tồn tại rồi trả lại sau `ms` --- */
+/* --- simulated WiFi drop: switch to a non-existent SSID and restore it after `ms` --- */
 static void wifi_restore(void *arg)
 {
     (void)arg;

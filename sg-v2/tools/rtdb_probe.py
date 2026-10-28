@@ -3,7 +3,7 @@
 Dò Firebase RTDB bằng ĐÚNG các endpoint mà firmware dùng.
 
 Mục đích không phải để quản trị dữ liệu, mà để kiểm chứng những giả định mà
-code C trong components/nht_fbrtdb dựa vào:
+code C trong components/nhtlib/nht_fbrtdb dựa vào:
 
   - signInWithPassword trả về idToken/refreshToken/localId
   - REST PUT/PATCH/GET trên <db>/<path>.json?auth=<idToken>

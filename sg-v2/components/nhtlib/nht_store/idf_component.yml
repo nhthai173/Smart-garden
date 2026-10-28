@@ -1,0 +1,8 @@
+version: "1.0.1"
+description: >
+  Key-value settings storage on NVS for ESP-IDF. Getters always take a
+  default, so the firmware runs from a blank NVS. Supports batching writes
+  into one commit.
+url: https://github.com/nhthai173/Smart-garden
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

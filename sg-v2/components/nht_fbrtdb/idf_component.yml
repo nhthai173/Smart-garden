@@ -1,8 +1,0 @@
-version: "1.0.0"
-description: >
-  Firebase Realtime Database client cho ESP-IDF: đăng nhập email/mật khẩu,
-  tự làm mới token, REST CRUD, và stream SSE CÓ xử lý chuyển hướng 307 mà
-  Firebase bắt buộc. Ghi bất đồng bộ qua hàng đợi nên không chặn task gọi.
-url: https://github.com/nht173/nht_fbrtdb
-license: MIT
-targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

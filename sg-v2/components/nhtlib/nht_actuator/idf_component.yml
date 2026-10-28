@@ -1,0 +1,9 @@
+version: "1.1.0"
+description: >
+  Stateful output for ESP-IDF: auto-off timer, turn-on delay, anti-
+  chatter, safety inhibit and event callbacks. The pin level is written
+  through a hook, so it works with GPIO, a PCF8574 expander or a virtual
+  output. Pure logic; unit-testable on a PC.
+url: https://github.com/nhthai173/Smart-garden
+license: MIT
+targets: [esp32, esp32s2, esp32s3, esp32c3, esp32c6, esp32h2]

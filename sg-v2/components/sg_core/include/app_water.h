@@ -1,13 +1,14 @@
 /**
- * app_water.h - Logic tưới cây. Đây là "nguồn sự thật" của thiết bị.
+ * @file    app_water.h
+ * @brief   Watering logic - the device's source of truth.
  *
- * Tầng này KHÔNG biết gì về WiFi, HTTP hay Firebase. Web server và Firebase
- * adapter đều gọi vào đây; chúng là phần thêm vào, không phải phần lõi.
- * Rút mạng ra thì hai adapter im lặng, còn lịch tưới vẫn chạy nguyên vẹn.
+ * This layer knows NOTHING about WiFi, HTTP or Firebase. The web server and the
+ * Firebase adapter both call into it; they are add-ons, not the core. Pull the
+ * network out and the two adapters go quiet while the schedule keeps running.
  *
- * Đây chính là chỗ hệ cũ làm ngược: danh sách lịch chỉ được nạp trong
- * callback "đã kết nối Firebase lần đầu", nên mất mạng lúc khởi động là
- * không tưới gì cả.
+ * That is exactly where the old system had it backwards: the schedule list was
+ * loaded only inside the "first Firebase connection" callback, so a reboot while
+ * offline meant no watering at all.
  */
 #ifndef APP_WATER_H
 #define APP_WATER_H
@@ -19,7 +20,7 @@
 #include "nht_valve.h"
 #include "nht_sched.h"
 
-/** Ai ra lệnh - dùng cho log và để adapter biết có phải lệnh của mình không. */
+/** Who issued a command - used for logs, and so an adapter can tell its own commands apart. */
 typedef enum {
     WSRC_BOOT = 0,
     WSRC_LOCAL_API,
@@ -30,17 +31,17 @@ typedef enum {
 } water_src_t;
 
 /**
- * Sự cố đang giữ van đóng. Bất kỳ bit nào bật = van bị ĐÓNG NGAY và khoá mở
- * lại; chỉ khi mọi bit tắt (đã qua lọc chống nhiễu) van mới được mở tiếp.
+ * Faults that hold the valve shut. Any bit set = the valve is CLOSED AT ONCE and
+ * locked against opening; only when every bit is clear (after noise filtering) may it open again.
  */
-#define WF_LEAK         0x01   /**< phát hiện ngập nước                       */
-#define WF_LEAK_SENSOR  0x02   /**< cảm biến ngập hỏng: không còn "mắt" nữa   */
-#define WF_VOLTAGE      0x04   /**< nguồn sụt dưới ngưỡng: motor không đủ lực */
+#define WF_LEAK         0x01   /**< water detected by the leak sensor          */
+#define WF_LEAK_SENSOR  0x02   /**< leak sensor broken: we have no "eyes" left  */
+#define WF_VOLTAGE      0x04   /**< supply below threshold: the motor lacks torque */
 
-/** Payload của một lịch tưới. Phần "tưới cây" duy nhất nhét vào nht_sched. */
+/** Payload of one watering schedule - the only watering-specific data put into nht_sched. */
 typedef struct {
     uint16_t duration_s;
-    uint8_t  level_pct;   /**< 1..100, chỉ có tác dụng với van bi */
+    uint8_t  level_pct;   /**< 1..100, only meaningful for a ball valve */
 } water_task_t;
 
 typedef struct {
@@ -56,35 +57,35 @@ typedef struct {
     water_src_t last_src;
     uint8_t  sched_count;
     bool     time_valid;
-    uint8_t  faults;      /**< mặt nạ WF_*; 0 = bình thường */
+    uint8_t  faults;      /**< WF_* bit mask; 0 = healthy */
 } water_status_t;
 
-/** Gọi khi có thay đổi đáng báo ra ngoài (đổi trạng thái van, ngập nước...). */
+/** Called on any change worth reporting (valve state, leak...). */
 typedef void (*water_change_cb_t)(const water_status_t *st, void *user);
 
 esp_err_t water_init(void);
 esp_err_t water_start(void);
 
 /**
- * Đẩy các thông số vừa đổi trong app_cfg vào cấu trúc ĐANG CHẠY.
+ * Push settings just changed in app_cfg into the RUNNING structures.
  *
- * Chỉnh ngưỡng cảm biến ngập ngoài vườn mà phải khởi động lại mới có hiệu
- * lực thì không ai chỉnh nổi - phải thử vài vòng mới ra được con số đúng.
+ * If leak-sensor thresholds could only take effect after a reboot, nobody could
+ * tune them in the garden - it takes a few rounds to find the right numbers.
  *
- * Những thứ KHÔNG đổi nóng được (phải khởi động lại): loại van, chuyển giữa
- * analog/digital, và các chân GPIO - vì chúng quyết định ngoại vi nào được
- * cấp phát lúc khởi tạo.
+ * What can NOT change live (needs a reboot): the valve type, switching between
+ * analog and digital sensing, and the GPIO pins - they decide which peripherals
+ * are allocated at initialisation.
  */
 void water_apply_cfg(void);
 
-/** Đăng ký người nghe. Tối đa WATER_MAX_LISTENERS. */
+/** Register a listener. At most WATER_MAX_LISTENERS. */
 bool water_on_change(water_change_cb_t cb, void *user);
 
-/** Phát tín hiệu thay đổi ngay (dùng khi adapter vừa kết nối xong). */
+/** Raise the change notification now (for an adapter that has just connected). */
 void water_notify(void);
 
 /**
- * @param seconds 0 = dùng thời lượng mặc định. Luôn bị kẹp xuống run_max_s.
+ * @param seconds 0 = use the default duration. Always clamped to run_max_s.
  * @param level   0 = 100%.
  */
 nht_valve_err_t water_open(uint32_t seconds, uint8_t level, water_src_t src);
@@ -93,7 +94,7 @@ nht_valve_err_t water_close(water_src_t src);
 void water_get_status(water_status_t *out);
 int  water_status_json(char *buf, size_t len);
 
-/* --- lịch tưới --- */
+/* --- schedule --- */
 int  water_sched_json(char *buf, size_t len);
 bool water_sched_add(uint8_t hour, uint8_t minute, uint8_t repeat_mask,
                      uint16_t duration_s, uint8_t level, bool enabled,
@@ -104,23 +105,23 @@ bool water_sched_update(uint8_t id, uint8_t hour, uint8_t minute,
 bool water_sched_remove(uint8_t id);
 void water_sched_clear(void);
 
-/** Thay toàn bộ danh sách lịch bằng một mảng JSON (dùng khi đồng bộ cloud). */
+/** Replace the whole schedule with a JSON array (used when syncing from the cloud). */
 bool water_sched_replace_json(const char *json);
 
 const char *water_src_str(water_src_t s);
 
-/** "leak+voltage" ... ; "" khi không có sự cố. buf >= 40 byte. */
+/** "leak+voltage" ...; "" when there is no fault. buf must be >= 40 bytes. */
 const char *water_faults_str(uint8_t faults, char *buf, size_t len);
 
 #if defined(SG_BENCH)
-/* --- Chỉ có ở bản bench: mô phỏng I/O và gây sự cố để kiểm thử trên board
-   thật khi chưa đấu cảm biến/relay. KHÔNG có trong firmware phát hành. --- */
+/* --- Bench build only: simulate I/O and inject faults so the firmware can be tested on
+   a real board with no sensors or relays wired. NOT part of the release firmware. --- */
 void water_bench_set_leak_raw(uint16_t raw);
 void water_bench_set_volt_raw(uint16_t raw);
 void water_bench_fail_leak_adc(bool fail);
-/** Treo task điều khiển `ms` mili giây để chứng minh watchdog đóng van. */
+/** Stall the control task for `ms` milliseconds to prove the watchdog closes the valve. */
 void water_bench_stall_ctl(uint32_t ms);
-/** Mức THẬT đang xuất ra từng chân relay (đọc thanh ghi output). */
+/** The REAL level currently driven on each relay pin (reads the output register). */
 int  water_bench_pins_json(char *buf, size_t len);
 #endif
 

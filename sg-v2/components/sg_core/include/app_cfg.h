@@ -1,13 +1,14 @@
 /**
- * app_cfg.h - Toàn bộ núm chỉnh của thiết bị, lưu trên NVS.
+ * @file    app_cfg.h
+ * @brief   Every adjustable knob of the device, stored in NVS.
  *
- * Nguyên tắc: KHÔNG hằng số vật lý nào được hardcode trong logic. Van bi
- * quay nhanh chậm khác nhau, điện cực cảm biến khô ẩm khác nhau, cầu phân
- * áp mỗi board sai một kiểu - tất cả phải chỉnh được tại hiện trường qua
- * web, không phải nạp lại firmware.
+ * Rule: NO physical constant is hard-coded in the logic. Ball valves turn at
+ * different speeds, leak probes differ between dry and damp, and every board's
+ * voltage divider is off in its own way - all of it must be adjustable in the
+ * field through the web UI, without reflashing the firmware.
  *
- * Giá trị mặc định dưới đây chỉ là điểm khởi đầu hợp lý để thiết bị chạy
- * được ngay từ NVS trống.
+ * The defaults below are only a sensible starting point so the device runs
+ * straight from a blank NVS.
  */
 #ifndef APP_CFG_H
 #define APP_CFG_H
@@ -21,14 +22,14 @@
 
 typedef struct {
     /* --- van --- */
-    uint8_t  valve_type;      /**< 0 = solenoid NC, 1 = van bi động cơ      */
-    uint32_t travel_ms;       /**< van bi: thời gian quay hết hành trình    */
+    uint8_t  valve_type;      /**< 0 = normally-closed solenoid, 1 = motorised ball valve */
+    uint32_t travel_ms;       /**< ball valve: time to travel end to end       */
     uint32_t pump_delay_ms;
     uint32_t ac_auto_off_ms;
     uint32_t run_default_s;
-    uint32_t run_max_s;       /**< TRẦN CỨNG cho một lượt tưới              */
+    uint32_t run_max_s;       /**< HARD CEILING for one watering run           */
 
-    /* --- cảm biến ngập --- */
+    /* --- leak sensor --- */
     bool     leak_analog;
     bool     leak_inverted;
     uint16_t leak_thr_on;
@@ -36,16 +37,16 @@ typedef struct {
     uint32_t leak_hold_on_ms;
     uint32_t leak_hold_off_ms;
 
-    /* --- lưu lượng & điện áp --- */
+    /* --- flow and voltage --- */
     float    flow_pulses_per_l;
-    float    volt_scale;      /**< hệ số cầu phân áp                        */
-    float    volt_min;        /**< dưới ngưỡng này thì cảnh báo             */
+    float    volt_scale;      /**< voltage-divider ratio                       */
+    float    volt_min;        /**< below this the supply counts as faulty      */
 
-    /* --- lịch & thời gian --- */
+    /* --- schedule and time --- */
     int32_t  tz_offset_s;
     uint16_t catchup_window_s;
 
-    /* --- danh tính & mạng --- */
+    /* --- identity and network --- */
     char     dev_name[CFG_STR_LEN];
     char     wifi_ssid[CFG_STR_LEN];
     char     wifi_pass[CFG_STR_LEN];
@@ -58,22 +59,22 @@ typedef struct {
     char     fb_device_id[CFG_STR_LEN];
 } app_cfg_t;
 
-/** Nạp cấu hình từ NVS, điền mặc định cho khoá thiếu. */
+/** Load settings from NVS, filling defaults for missing keys. */
 esp_err_t app_cfg_load(void);
 
-/** Con trỏ tới cấu hình đang dùng. Không bao giờ NULL sau app_cfg_load(). */
+/** @return pointer to the live settings. Never NULL after app_cfg_load(). */
 app_cfg_t *app_cfg(void);
 
-/** Ghi toàn bộ cấu hình hiện tại xuống NVS. */
+/** Write all current settings to NVS. */
 esp_err_t app_cfg_save(void);
 
-/** Đặt một khoá theo tên (dùng cho REST /config). @return false nếu tên lạ. */
+/** Set one setting by name (used by the REST /config). @return false for an unknown name. */
 bool app_cfg_set_kv(const char *key, const char *value);
 
-/** Xuất cấu hình ra JSON. Mật khẩu bị che. */
+/** Export the settings as JSON. Passwords are masked. */
 int  app_cfg_to_json(char *buf, size_t len);
 
-/** Xoá sạch cấu hình, quay về mặc định xuất xưởng. */
+/** Erase all settings and return to the factory defaults. */
 esp_err_t app_cfg_factory_reset(void);
 
 bool app_cfg_wifi_ready(void);

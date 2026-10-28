@@ -1,20 +1,21 @@
 /**
- * secret.h - Giá trị mặc định lúc phát triển. Chép thành secret.h rồi điền.
+ * @file    secret_placeholder.h
+ * @brief   Development defaults. Copy to secret.h and fill in (secret.h is git-ignored).
  *
- * app_cfg.c dò file này bằng __has_include. Có thì các khoá dưới đây được
- * dùng làm mặc định khi NVS còn trống; người dùng cuối vẫn nhập lại được
- * qua captive portal, và giá trị trong NVS luôn thắng.
+ * app_cfg.c detects this file with __has_include. If present, the keys below
+ * become the defaults when NVS is blank; an end user can still re-enter them
+ * through the captive portal, and NVS values always win.
  */
 #ifndef SG_SECRET_H
 #define SG_SECRET_H
 
-/* WiFi thật, dùng cho bản nạp lên board. */
+/* Real WiFi, used by the build flashed to a board. */
 #define SECRET_WIFI_SSID      ""
 #define SECRET_WIFI_PASS      ""
 
-/* Trình mô phỏng cấp sẵn một mạng mở tên Wokwi-GUEST ra được internet.
-   Chỉ đè lên khi build bản mô phỏng - KHÔNG để bản nạp lên board thật đi
-   tìm một mạng không tồn tại. */
+/* The simulator provides an open network called Wokwi-GUEST that reaches the
+   internet. Override only for the simulator build - do NOT make a build flashed to
+   a real board go looking for a network that does not exist. */
 #if defined(SG_WOKWI)
 #undef  SECRET_WIFI_SSID
 #undef  SECRET_WIFI_PASS
@@ -27,8 +28,8 @@
 #define SECRET_FB_EMAIL       ""
 #define SECRET_FB_PASS        ""
 
-/* Nhánh riêng để thử nghiệm - KHÔNG đụng vào dữ liệu của thiết bị v1
-   đang chạy thật. */
+/* A dedicated branch for experiments - do NOT touch the data of the v1 devices
+   running in service. */
 #define SECRET_FB_DEVICE_ID   "sg-v2-dev"
 
 #endif /* SG_SECRET_H */
